@@ -8,21 +8,21 @@ on:
         required: false
         default: "patch"
         type: string
-    formats:
-      description: "Output formats (space-separated list)"
-      required: false
-      default: "html"
-      type: string
-    quarto:
-      description: "Quarto version"
-      required: false
-      default: "latest"
-      type: string
-    tinytex:
-      description: "Install TinyTeX"
-      required: false
-      default: false
-      type: boolean
+      formats:
+        description: "Output formats (space-separated list)"
+        required: false
+        default: "html"
+        type: string
+      quarto:
+        description: "Quarto version"
+        required: false
+        default: "latest"
+        type: string
+      tinytex:
+        description: "Install TinyTeX"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   bump-version:
