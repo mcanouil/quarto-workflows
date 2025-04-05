@@ -25,32 +25,29 @@ on:
         type: boolean
 
 env:
+  GH_TOKEN: ${{ secrets.github_token }} # gh cli
+  BRANCH: ci/bump-version
+  COMMIT: "ci: bump version for release :rocket:"
   BUMPVERSION: ${{ inputs.version }}
   FORMATS: ${{ inputs.formats }}
   QUARTOVERSION: ${{ inputs.quarto }}
   TINYTEX: ${{ inputs.tinytex }}
 
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
 jobs:
   bump-version:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-      pull-requests: write
-
-    env:
-      BRANCH: ci/bump-version
-      GITHUB_TOKEN: ${{ secrets.github_token }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Bump Version
-        id: bump-version
-        env:
-          GH_TOKEN: ${{ secrets.github_token }}
-          COMMIT: "ci: bump version for release :rocket:"
+        id: bump-version          
         shell: bash
         run: |
           git config --local user.name github-actions[bot]
@@ -170,10 +167,6 @@ jobs:
 
     needs: deploy
 
-    permissions:
-      contents: write
-      id-token: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -185,8 +178,6 @@ jobs:
           git pull origin main
 
       - name: Release extension on GitHub
-        env:
-          GH_TOKEN: ${{ secrets.github_token }}
         shell: bash
         run: |
           REPO="${{ github.repository }}"
