@@ -67,7 +67,7 @@ jobs:
           MAJOR=$(echo ${CURRENT_VERSION} | cut -d. -f1)
           MINOR=$(echo ${CURRENT_VERSION} | cut -d. -f2)
           PATCH=$(echo ${CURRENT_VERSION} | cut -d. -f3)
-
+          echo "::notice ::Bumping Version: ${{ github.event.inputs.version }}"
           case "${{ github.event.inputs.version }}" in
             "major")
               MAJOR=$((MAJOR + 1))
@@ -116,7 +116,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Update branch
         run: |
@@ -124,10 +125,18 @@ jobs:
           git checkout main
           git pull origin main
 
-      - uses: quarto-dev/quarto-actions/setup@v2
+      - name: Check inputs
+        shell: bash
+        run: |
+          echo "::notice ::Quarto: ${{ github.event.inputs.quarto }}"
+          echo "::notice ::TinyTeX: ${{ github.event.inputs.tinytex }}"
+          echo "::notice ::Formats: ${{ github.event.inputs.formats }}"
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
         with:
-          version: ${{ github.event.inputs.quarto }}
-          tinytex: ${{ github.event.inputs.tinytex }}
+          version: "${{ github.event.inputs.quarto }}"
+          tinytex: "${{ github.event.inputs.tinytex }}"
 
       - name: Render Quarto Project
         shell: bash
@@ -138,9 +147,11 @@ jobs:
             quarto render --to ${format}
           done
 
-      - uses: actions/configure-pages@v5
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: "_site"
 
