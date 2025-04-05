@@ -16,7 +16,7 @@ on:
       quarto:
         description: "Quarto version"
         required: false
-        default: "latest"
+        default: "release"
         type: string
       tinytex:
         description: "Install TinyTeX"
