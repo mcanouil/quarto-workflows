@@ -18,25 +18,6 @@ on:
         required: false
         default: false
         type: boolean
-  workflow_dispatch:
-    inputs:
-      formats:
-        description: "Output formats (space-separated list)"
-        required: false
-        default: "html"
-        type: string
-      version:
-        description: "Quarto version"
-        required: false
-        default: "release"
-        type: string
-      tinytex:
-        description: "Install TinyTeX"
-        required: false
-        default: false
-        type: boolean
-  release:
-    types: [published]
 
 permissions:
   contents: read
@@ -53,9 +34,6 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    env:
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
