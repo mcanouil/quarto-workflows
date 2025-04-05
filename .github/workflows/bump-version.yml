@@ -2,6 +2,12 @@ name: Bump Version
 
 on:
   workflow_call:
+    inputs:
+      version:
+        description: "Version"
+        required: false
+        default: "patch"
+        type: string
 
 jobs:
   bump-version:
