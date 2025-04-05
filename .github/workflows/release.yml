@@ -5,22 +5,22 @@ on:
     inputs:
       version:
         description: "Version"
-        required: false
+        required: true
         default: "patch"
         type: string
       formats:
         description: "Output formats (space-separated list)"
-        required: false
+        required: true
         default: "html"
         type: string
       quarto:
         description: "Quarto version"
-        required: false
+        required: true
         default: "release"
         type: string
       tinytex:
         description: "Install TinyTeX"
-        required: false
+        required: true
         default: false
         type: boolean
 
