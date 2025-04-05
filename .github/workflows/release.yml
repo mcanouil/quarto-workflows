@@ -25,10 +25,10 @@ on:
         type: boolean
 
 env:
-  BUMPVERSION: ${{ github.event.inputs.version }}
-  FORMATS: ${{ github.event.inputs.formats }}
-  QUARTOVERSION: ${{ github.event.inputs.quarto }}
-  TINYTEX: ${{ github.event.inputs.tinytex }}
+  BUMPVERSION: ${{ inputs.version }}
+  FORMATS: ${{ inputs.formats }}
+  QUARTOVERSION: ${{ inputs.quarto }}
+  TINYTEX: ${{ inputs.tinytex }}
 
 jobs:
   bump-version:
