@@ -24,6 +24,12 @@ on:
         default: false
         type: boolean
 
+env:
+  BUMPVERSION: ${{ github.event.inputs.version }}
+  FORMATS: ${{ github.event.inputs.formats }}
+  QUARTOVERSION: ${{ github.event.inputs.quarto }}
+  TINYTEX: ${{ github.event.inputs.tinytex }}
+
 jobs:
   bump-version:
     runs-on: ubuntu-latest
@@ -67,8 +73,8 @@ jobs:
           MAJOR=$(echo ${CURRENT_VERSION} | cut -d. -f1)
           MINOR=$(echo ${CURRENT_VERSION} | cut -d. -f2)
           PATCH=$(echo ${CURRENT_VERSION} | cut -d. -f3)
-          echo "::notice ::Bumping Version: ${{ github.event.inputs.version }}"
-          case "${{ github.event.inputs.version }}" in
+          echo "::notice ::Bumping Version: ${BUMPVERSION}"
+          case "${BUMPVERSION}" in
             "major")
               MAJOR=$((MAJOR + 1))
               MINOR=0
@@ -128,22 +134,22 @@ jobs:
       - name: Check inputs
         shell: bash
         run: |
-          echo "::notice ::Quarto: ${{ github.event.inputs.quarto }}"
-          echo "::notice ::TinyTeX: ${{ github.event.inputs.tinytex }}"
-          echo "::notice ::Formats: ${{ github.event.inputs.formats }}"
+          echo "::notice ::Quarto: ${QUARTOVERSION}"
+          echo "::notice ::TinyTeX: ${TINYTEX}"
+          echo "::notice ::Formats: ${FORMATS}"
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
-          version: "${{ github.event.inputs.quarto }}"
-          tinytex: "${{ github.event.inputs.tinytex }}"
+          version: "${{ env.QUARTOVERSION }}"
+          tinytex: "${{ env.TINYTEX }}"
 
       - name: Render Quarto Project
         shell: bash
         run: |
           echo -e "project:\n  output-dir: _site" > _quarto.yml
           # Render to all formats via for loop to avoid LaTeX error "pdf/beamer" formats
-          for format in ${{ github.event.inputs.formats }}; do
+          for format in ${FORMATS}; do
             quarto render --to ${format}
           done
 
