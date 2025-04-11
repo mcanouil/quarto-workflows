@@ -63,6 +63,7 @@ jobs:
           REPO="${{ github.repository }}"
           PREFIX="${{ github.repository_owner }}/quarto-"
           EXTENSION="${REPO#${PREFIX}}"
+          EXTENSION=${EXTENSION#revealjs-}
           MANIFEST="_extensions/${EXTENSION}/_extension.yml"
           echo "::notice ::Manifest: ${MANIFEST}"
           DATE=$(date +%Y-%m-%d)
