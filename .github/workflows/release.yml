@@ -184,6 +184,7 @@ jobs:
         run: |
           REPO="${{ github.repository }}"
           EXTENSION="${REPO#${{ github.repository_owner }}/quarto-}"
+          EXTENSION=${EXTENSION#revealjs-}
           MANIFEST="_extensions/${EXTENSION}/_extension.yml"
           VERSION=$(grep "^version:" "${MANIFEST}" | sed 's/version: //;s/"//g')
           LINE=$(grep -n "^version:" "${MANIFEST}" | cut -d: -f1)
