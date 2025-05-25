@@ -1,6 +1,6 @@
-# Quarto Extension Actions
+# Quarto Actions Workflows
 
-GitHub Actions for Quarto extension workflows.
+GitHub Actions workflows for Quarto projects.
 
 ## Usage
 
