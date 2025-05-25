@@ -4,7 +4,7 @@ GitHub Actions workflows for Quarto projects.
 
 ## Usage
 
-### `release.yml`
+### `release-extension.yml`
 
 ```yaml
 name: Release Quarto Extension
@@ -38,11 +38,39 @@ permissions:
 
 jobs:
   release:
-    uses: mcanouil/quarto-extension-actions/.github/workflows/release.yml@main
+    uses: mcanouil/quarto-extension-actions/.github/workflows/release-extension.yml@main
     secrets: inherit
     with:
       version: "${{ github.event.inputs.version }}"
       formats: "html typst pdf docx revealjs beamer pptx"
       tinytex: true
+      quarto: "${{ github.event.inputs.quarto }}"
+```
+
+### `release-revealjs.yml`
+
+```yaml
+name: Release Reveal.js Slides
+
+on:
+  workflow_dispatch:
+    inputs:
+      quarto:
+        description: "Quarto version"
+        required: true
+        default: "release"
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+  pages: write
+
+jobs:
+  release:
+    uses: mcanouil/quarto-extension-actions/.github/workflows/release-revealjs.yml@main
+    secrets: inherit
+    with:
       quarto: "${{ github.event.inputs.quarto }}"
 ```
