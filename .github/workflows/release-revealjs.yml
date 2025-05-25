@@ -93,6 +93,14 @@ jobs:
           version: "${{ env.QUARTOVERSION }}"
           tinytex: false
 
+      - name: Checkout repository with sparse checkout
+        uses: actions/checkout@v4
+        with:
+          repository: mcanouil/quarto-workflows
+          sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
+          sparse-checkout-cone-mode: false
+          path: .github/workflows/assets
+
       - name: Render Quarto Project
         shell: bash
         run: |
