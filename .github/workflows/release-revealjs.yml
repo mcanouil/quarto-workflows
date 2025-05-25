@@ -137,8 +137,7 @@ jobs:
 
       - name: Release extension on GitHub
         shell: bash
-        env:
-          DATE: ${{ needs.bump-version.outputs.date }}
-          VERSION: ${{ needs.bump-version.outputs.version }}
         run: |
+          VERSION=$(grep "^version:" "CITATION.cff" | sed 's/version: //;s/"//g')
+          DATE=$(grep "^date-released:" "CITATION.cff" | sed 's/date-released: //;s/"//g')
           gh release create ${VERSION} --title "${DATE}" --generate-notes
