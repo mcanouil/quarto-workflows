@@ -99,13 +99,13 @@ jobs:
           repository: mcanouil/quarto-workflows
           sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
           sparse-checkout-cone-mode: false
-          path: .github/workflows/assets
+          path: workflows
 
       - name: Render Quarto Project
         shell: bash
         run: |
           npm install -g decktape
-          echo -e "project:\n  output-dir: _site\n  post-render:\n    - .github/workflows/assets/slides-to-pdf.sh" > _quarto.yml
+          echo -e "project:\n  output-dir: _site\n  post-render:\n    - workflows/.github/workflows/assets/slides-to-pdf.sh" > _quarto.yml
           quarto render
 
       - name: Configure GitHub Pages
