@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           npm install -g decktape
-          echo -e "project:\n  output-dir: _site\n  post-render:\n    - assets/slides-to-pdf.sh" > _quarto.yml
+          echo -e "project:\n  output-dir: _site\n  post-render:\n    - .github/assets/slides-to-pdf.sh" > _quarto.yml
           quarto render
 
       - name: Configure GitHub Pages
