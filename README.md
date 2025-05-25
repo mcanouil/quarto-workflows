@@ -38,7 +38,7 @@ permissions:
 
 jobs:
   release:
-    uses: mcanouil/quarto-extension-actions/.github/workflows/release-extension.yml@main
+    uses: mcanouil/quarto-workflows/.github/workflows/release-extension.yml@main
     secrets: inherit
     with:
       version: "${{ github.event.inputs.version }}"
@@ -69,7 +69,7 @@ permissions:
 
 jobs:
   release:
-    uses: mcanouil/quarto-extension-actions/.github/workflows/release-revealjs.yml@main
+    uses: mcanouil/quarto-workflows/.github/workflows/release-revealjs.yml@main
     secrets: inherit
     with:
       quarto: "${{ github.event.inputs.quarto }}"
