@@ -98,6 +98,18 @@ jobs:
           git commit -m "${COMMIT}" || echo "No changes to commit"
           git push --force origin ${BRANCH} || echo "No changes to push"
 
+          # Add to workflow summary
+          echo "## 📈 Version Bump Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Extension | \`${EXTENSION}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Previous Version | \`${CURRENT_VERSION}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| New Version | \`${VERSION}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bump Type | \`${BUMPVERSION}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Date | \`${DATE}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
       - name: Create Pull Request
         shell: bash
         run: |
@@ -167,6 +179,19 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+      - name: Add deployment summary
+        shell: bash
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Quarto Version | \`${QUARTOVERSION}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| TinyTeX | \`${TINYTEX}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Output Formats | \`${FORMATS}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub Pages URL | [${{ steps.deployment.outputs.page_url }}](${{ steps.deployment.outputs.page_url }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
   screenshot:
     runs-on: ubuntu-latest
 
@@ -224,10 +249,23 @@ jobs:
             fi
           fi
 
+          # Add screenshot summary
+          REPO="${{ github.repository }}"
+          EXTENSION="${REPO#${{ github.repository_owner }}/quarto-}"
+          echo "## 📸 Screenshot Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "${REPO}" == *"revealjs"* ]]; then
+            echo "✅ Screenshot taken for RevealJS extension: \`${EXTENSION}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Template image updated at \`.github/template.png\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ Skipped screenshot for non-RevealJS extension: \`${EXTENSION}\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
   release:
     runs-on: ubuntu-latest
 
-    needs: screenshot
+    needs: [deploy, screenshot]
 
     steps:
       - name: Checkout repository
@@ -252,3 +290,18 @@ jobs:
           PRTITLE=${EXTENSION^^}
           PRTITLE=${PRTITLE//-/ }
           gh release create ${VERSION} --title "${PRTITLE} ${VERSION}" --generate-notes
+
+          # Add final release summary
+          echo "## 🎉 Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Extension Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Extension Name**: \`${EXTENSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release Title**: \`${PRTITLE} ${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [📦 GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${VERSION})" >> $GITHUB_STEP_SUMMARY
+          echo "- [🌐 Live Demo](${{ needs.deploy.outputs.gh_pages_url }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "🤖 *Automated release completed successfully*" >> $GITHUB_STEP_SUMMARY
