@@ -25,17 +25,17 @@ on:
         type: boolean
       r:
         description: "Install R"
-        required: true
+        required: false
         default: false
         type: boolean
       python:
         description: "Install Python"
-        required: true
+        required: false
         default: false
         type: boolean
       julia:
         description: "Install Julia"
-        required: true
+        required: false
         default: false
         type: boolean
 
