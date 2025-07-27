@@ -23,6 +23,21 @@ on:
         required: true
         default: false
         type: boolean
+      r:
+        description: "Install R"
+        required: true
+        default: false
+        type: boolean
+      python:
+        description: "Install Python"
+        required: true
+        default: false
+        type: boolean
+      julia:
+        description: "Install Julia"
+        required: true
+        default: false
+        type: boolean
 
 env:
   GH_TOKEN: ${{ secrets.github_token }} # gh cli
@@ -138,6 +153,48 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up R
+        if: ${{ inputs.r }}
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install renv
+        if: ${{ inputs.r }}
+        uses: r-lib/actions/setup-renv@v2
+
+      - name: Install dependencies
+        if: ${{ inputs.r }}
+        shell: Rscript
+        run: |
+          renv::restore()
+
+      - name: Install uv
+        if: ${{ inputs.python }}
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        if: ${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Set up Julia
+        if: ${{ inputs.julia }}
+        uses: julia-actions/setup-julia@v1
+
+      - name: Install Julia dependencies
+        if: ${{ inputs.julia }}
+        shell: bash
+        run: |
+          julia --project -e 'using Pkg; Pkg.instantiate()'
+
+      - name: Install dependencies
+        if: ${{ inputs.python }}
+        shell: bash
+        run: uv sync
 
       - name: Update branch
         run: |
