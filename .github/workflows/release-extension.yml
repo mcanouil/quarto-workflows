@@ -170,7 +170,7 @@ jobs:
         uses: r-lib/actions/setup-r@v2
 
       - name: Install renv
-        if: ${{ steps.check-r-env.outputs.renv == 'true' }}
+        if: ${{ inputs.r }} && ${{ steps.check-r-env.outputs.renv == 'true' }}
         uses: r-lib/actions/setup-renv@v2
 
       - name: Install R dependencies
@@ -202,7 +202,7 @@ jobs:
           fi
 
       - name: Install uv
-        if: ${{ steps.check-python-env.outputs.uv == 'true' }}
+        if: ${{ inputs.python }} && ${{ steps.check-python-env.outputs.uv == 'true' }}
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -215,7 +215,7 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        if: ${{ steps.check-python-env.outputs.python == 'true' }}
+        if: ${{ inputs.python }} && ${{ steps.check-python-env.outputs.python == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version-file: "pyproject.toml"
