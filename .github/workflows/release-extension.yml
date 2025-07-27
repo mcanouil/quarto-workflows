@@ -165,6 +165,26 @@ jobs:
             echo "renv=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Set up R
+        if: ${{ inputs.r }}
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install renv
+        if: ${{ steps.check-r-env.outputs.renv == 'true' }}
+        uses: r-lib/actions/setup-renv@v2
+
+      - name: Install R dependencies
+        if: ${{ inputs.r }}
+        env:
+          RENV: ${{ steps.check-r-env.outputs.renv == 'true' }}
+        shell: Rscript
+        run: |
+          if (as.logical(Sys.getenv("RENV"))) {
+            renv::restore()
+          } else {
+            install.packages(c("knitr", "rmarkdown"))
+          }
+
       - name: Check Python environment
         id: check-python-env
         env:
@@ -181,20 +201,6 @@ jobs:
             echo "uv=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Set up R
-        if: ${{ inputs.r }}
-        uses: r-lib/actions/setup-r@v2
-
-      - name: Install renv
-        if: ${{ steps.check-r-env.outputs.renv == 'true' }}
-        uses: r-lib/actions/setup-renv@v2
-
-      - name: Install R dependencies
-        if: ${{ steps.check-r-env.outputs.renv == 'true' }}
-        shell: Rscript
-        run: |
-          renv::restore()
-
       - name: Install uv
         if: ${{ steps.check-python-env.outputs.uv == 'true' }}
         uses: astral-sh/setup-uv@v6
@@ -202,26 +208,48 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
+      - name: Install uv
+        if: ${{ inputs.python }} && ${{ steps.check-python-env.outputs.uv == 'false' }}
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
       - name: Set up Python
         if: ${{ steps.check-python-env.outputs.python == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version-file: "pyproject.toml"
 
+      - name: Set up Python
+        if: ${{ inputs.python }} && ${{ steps.check-python-env.outputs.python == 'false' }}
+        uses: actions/setup-python@v5
+
+      - name: Install Python dependencies
+        if: ${{ inputs.python }}
+        env:
+          UV: ${{ steps.check-python-env.outputs.uv == 'true' }}
+        shell: bash
+        run: |
+          if [ "${UV}" = "true" ]; then
+            uv sync
+          else
+            uv init --no-package --vcs none --bare --no-readme --author-from none
+            uv venv
+            source .venv/bin/activate
+            uv add jupyter papermill
+            uv sync
+          fi
+
       - name: Set up Julia
         if: ${{ inputs.julia }}
-        uses: julia-actions/setup-julia@v1
+        uses: julia-actions/setup-julia@v2
 
       - name: Install Julia dependencies
         if: ${{ inputs.julia }}
         shell: bash
         run: |
-          julia --project -e 'using Pkg; Pkg.instantiate()'
-
-      - name: Install dependencies
-        if: ${{ inputs.python }}
-        shell: bash
-        run: uv sync
+          julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+          julia --project=. -e 'using Pkg; Pkg.add(["IJulia"])'
 
       - name: Update branch
         run: |
