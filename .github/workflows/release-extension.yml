@@ -154,29 +154,56 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check R environment
+        id: check-r-env
+        env:
+          R: ${{ inputs.r }}
+        run: |
+          if [ "${R}" = "true" ] && [ -f "renv.lock" ]; then
+            echo "renv=true" >> $GITHUB_OUTPUT
+          else
+            echo "renv=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Python environment
+        id: check-python-env
+        env:
+          PYTHON: ${{ inputs.python }}
+        run: |
+          if [ "${PYTHON}" = "true" ] && [ -f "pyproject.toml" ]; then
+            echo "python=true" >> $GITHUB_OUTPUT
+          else
+            echo "python=false" >> $GITHUB_OUTPUT
+          fi
+          if [ "${PYTHON}" = "true" ] && [ -f "uv.lock" ]; then
+            echo "uv=true" >> $GITHUB_OUTPUT
+          else
+            echo "uv=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up R
         if: ${{ inputs.r }}
         uses: r-lib/actions/setup-r@v2
 
       - name: Install renv
-        if: ${{ inputs.r }}
+        if: ${{ steps.check-r-env.outputs.renv == 'true' }}
         uses: r-lib/actions/setup-renv@v2
 
-      - name: Install dependencies
-        if: ${{ inputs.r }}
+      - name: Install R dependencies
+        if: ${{ steps.check-r-env.outputs.renv == 'true' }}
         shell: Rscript
         run: |
           renv::restore()
 
       - name: Install uv
-        if: ${{ inputs.python }}
+        if: ${{ steps.check-python-env.outputs.uv == 'true' }}
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
       - name: Set up Python
-        if: ${{ inputs.python }}
+        if: ${{ steps.check-python-env.outputs.python == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version-file: "pyproject.toml"
