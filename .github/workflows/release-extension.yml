@@ -177,13 +177,13 @@ jobs:
         if: ${{ inputs.r }}
         env:
           RENV: ${{ steps.check-r-env.outputs.renv == 'true' }}
-        shell: Rscript
+        shell: bash
         run: |
-          if (as.logical(Sys.getenv("RENV"))) {
-            renv::restore()
-          } else {
-            install.packages(c("knitr", "rmarkdown"))
-          }
+          if [ "${RENV}" = "true" ]; then
+            Rscript -e 'renv::restore()'
+          else
+            Rscript -e 'install.packages(c("knitr", "rmarkdown"))'
+          fi
 
       - name: Check Python environment
         id: check-python-env
