@@ -353,7 +353,7 @@ jobs:
             if ! git diff --cached --quiet; then
               git commit -m "ci: update thumbs"
               git push --force origin ${BRANCH}
-              gh pr create --fill-first --base "main" --head "${BRANCH}"
+              gh pr create --fill-first --base "main" --head "${BRANCH}" --label "Type: CI/CD :robot:"
               sleep 15
               gh pr merge --auto --squash --delete-branch
             else
