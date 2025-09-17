@@ -425,14 +425,11 @@ jobs:
         id: convert-slides
         env:
           GH_TOKEN: ${{ secrets.github_token }} # gh cli
-          GH_PAGES_PATH_ARTIFACT: ${{ steps.download-pages-artifact.outputs.download-path }}
         shell: bash
         run: |
           REPO="${GITHUB_REPOSITORY}"
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
-          cd "${GH_PAGES_PATH_ARTIFACT}"
           mkdir _site && tar -xf artifact.tar -C _site || echo "No artifact.tar to extract"
-          ls -la
           if [[ "${REPO}" == *"revealjs"* ]]; then
             SLIDES_PATH=$(find _site -name "index.html" | head -n 1)
             PDF_AUTHOR=$(grep -o '<meta name="author" content="[^"]*"' "${SLIDES_PATH}" | sed 's/<meta name="author" content="\(.*\)"/\1/')
@@ -486,24 +483,33 @@ jobs:
             echo ""
           } >> "${GITHUB_STEP_SUMMARY}"
           if [[ "${REPO}" == *"revealjs"* ]]; then
-          {
-            echo "✅ PDF generated for RevealJS extension: \`${EXTENSION}\`"
-            echo "- Slides converted to PDF format at \`${EXTENSION}.pdf\`"
-            echo "- Poster image created at \`${EXTENSION}.png\`"
-          } >> "${GITHUB_STEP_SUMMARY}"
+            {
+              echo "✅ PDF generated for RevealJS extension: \`${EXTENSION}\`"
+              echo "- Slides converted to PDF format at \`${EXTENSION}.pdf\`"
+              echo "- Poster image created at \`${EXTENSION}.png\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
           else
             echo "ℹ️ Skipped PDF conversion for non-RevealJS extension: \`${EXTENSION}\`" >> "${GITHUB_STEP_SUMMARY}"
           fi
           echo "" >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Upload PDF artifact
+      - name: Upload artifact (revealjs)
         uses: actions/upload-artifact@v4
         if: ${{ steps.convert-slides.outputs.SLIDES_PDF_EXISTS == 'true' }}
         with:
-          name: pdf-png
+          name: extension-assets
           path: |
             ${{ steps.convert-slides.outputs.SLIDES_PDF }}
             ${{ steps.convert-slides.outputs.SLIDES_PNG }}
+            ${{ steps.download-pages-artifact.outputs.download-path }}/_site
+
+      - name: Upload artifact (default)
+        uses: actions/upload-artifact@v4
+        if: ${{ steps.convert-slides.outputs.SLIDES_PDF_EXISTS == 'false' }}
+        with:
+          name: extension-assets
+          path: |
+            ${{ steps.download-pages-artifact.outputs.download-path }}/_site
 
   release:
     runs-on: ubuntu-latest
@@ -525,17 +531,11 @@ jobs:
           git pull origin main
 
       - name: Download PDF artifact
-        id: download-pdf-artifact
+        id: download-extension-assets-artifact
         if: ${{ needs.slides-to-pdf.outputs.slides-pdf-exists == 'true' }}
         uses: actions/download-artifact@v5
         with:
-          name: pdf-png
-
-      - name: Download artifact
-        id: download-pages-artifact
-        uses: actions/download-artifact@v5
-        with:
-          artifact-ids: ${{ needs.deploy.outputs.gh_pages_artifact }}
+          name: extension-assets
 
       - name: Release extension on GitHub
         env:
@@ -544,23 +544,30 @@ jobs:
           VERSION: ${{ needs.bump-version.outputs.VERSION }}
           VERSION_MESSAGE: ${{ needs.bump-version.outputs.VERSION_MESSAGE }}
           RELEASE_TITLE: ${{ needs.bump-version.outputs.RELEASE_TITLE }}
-          GH_PAGES_PATH_ARTIFACT: ${{ steps.download-pages-artifact.outputs.download-path }}
-          SLIDES_PATH_ARTIFACT: ${{ steps.download-pdf-artifact.outputs.download-path }}
+          EXTENSION_ARTIFACT: ${{ steps.download-extension-assets-artifact.outputs.download-path }}
           SLIDES_PNG: ${{ needs.slides-to-pdf.outputs.slides-png }}
           SLIDES_PDF: ${{ needs.slides-to-pdf.outputs.slides-pdf }}
         shell: bash
         run: |
+          REPO="${GITHUB_REPOSITORY}"
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
-          poster_asset="${SLIDES_PATH_ARTIFACT}/${SLIDES_PNG}"
-          pdf_asset="${SLIDES_PATH_ARTIFACT}/${SLIDES_PDF}"
+          tar -xf artifact.tar || echo "No artifact.tar to extract"
           site_asset="${GH_PAGES_PATH_ARTIFACT}/_site"
-
-          gh release create ${VERSION} \
-            --title "${RELEASE_TITLE}" \
-            --generate-notes \
-            "${poster_asset}#Poster" \
-            "${pdf_asset}#Slides PDF" \
-            "${site_asset}#Live Demo"
+          if [[ "${REPO}" == *"revealjs"* ]]; then
+            poster_asset="${SLIDES_PATH_ARTIFACT}/${SLIDES_PNG}"
+            pdf_asset="${SLIDES_PATH_ARTIFACT}/${SLIDES_PDF}"
+            gh release create ${VERSION} \
+              --title "${RELEASE_TITLE}" \
+              --generate-notes \
+              "${poster_asset}#Poster" \
+              "${pdf_asset}#Slides PDF" \
+              "${site_asset}#Live Demo"
+          else
+            gh release create ${VERSION} \
+              --title "${RELEASE_TITLE}" \
+              --generate-notes \
+              "${site_asset}#Live Demo"
+          fi
 
           # Add final release summary
           {
@@ -572,8 +579,7 @@ jobs:
             echo ""
             echo "### 🔗 Links"
             echo "- [📦 GitHub Release](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${VERSION})"
-            echo "- [🌐 Live HTML Demo](${GH_PAGES_URL})"
-            echo "- [🌐 Live PDF Demo](${GH_PAGES_URL}/${SLIDES_PDF})"
+            echo "- [🌐 Live Demo](${GH_PAGES_URL})"
             echo ""
             echo "---"
             echo "🤖 *Automated release completed successfully*"
