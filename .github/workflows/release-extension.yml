@@ -543,22 +543,17 @@ jobs:
           VERSION: ${{ needs.bump-version.outputs.VERSION }}
           VERSION_MESSAGE: ${{ needs.bump-version.outputs.VERSION_MESSAGE }}
           RELEASE_TITLE: ${{ needs.bump-version.outputs.RELEASE_TITLE }}
-          EXTENSION_ARTIFACT: ${{ steps.download-extension-assets-artifact.outputs.download-path }}
           SLIDES_PNG: ${{ needs.slides-to-pdf.outputs.slides-png }}
           SLIDES_PDF: ${{ needs.slides-to-pdf.outputs.slides-pdf }}
         shell: bash
         run: |
           REPO="${GITHUB_REPOSITORY}"
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
-          ls -la
-          tar -xf artifact.tar || echo "No artifact.tar to extract"
-          site_asset="${GH_PAGES_PATH_ARTIFACT}/_site"
-          assets=("${site_asset}#Live Demo")
+          assets=("_site#Live Demo")
           if [[ "${REPO}" == *"revealjs"* ]]; then
-            poster_asset="${SLIDES_PATH_ARTIFACT}/${SLIDES_PNG}"
-            pdf_asset="${SLIDES_PATH_ARTIFACT}/${SLIDES_PDF}"
-            assets+=("${poster_asset}#Poster" "${pdf_asset}#Slides PDF")
+            assets+=("${SLIDES_PNG}#Poster" "${SLIDES_PDF}#Slides PDF")
           fi
+          echo "${VERSION_MESSAGE}"
           gh release create "${VERSION}" \
             --title "${RELEASE_TITLE}" \
             --generate-notes \
