@@ -532,7 +532,6 @@ jobs:
 
       - name: Download PDF artifact
         id: download-extension-assets-artifact
-        if: ${{ needs.slides-to-pdf.outputs.slides-pdf-exists == 'true' }}
         uses: actions/download-artifact@v5
         with:
           name: extension-assets
