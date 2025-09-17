@@ -558,7 +558,7 @@ jobs:
           fi
           assets=("gh-pages.tar.gz#GitHub Pages (tar.gz)")
           if [[ "${REPO}" == *"revealjs"* ]]; then
-            assets+=("${SLIDES_PNG}#Poster (png)" "${SLIDES_PDF}#Reveal.js Slides (pdf)")
+            assets+=("assets/${SLIDES_PNG}#Poster (png)" "assets/${SLIDES_PDF}#Reveal.js Slides (pdf)")
           fi
           echo "${VERSION_MESSAGE}"
           gh release create "${VERSION}" \
