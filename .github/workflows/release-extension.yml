@@ -485,8 +485,8 @@ jobs:
           if [[ "${REPO}" == *"revealjs"* ]]; then
             {
               echo "✅ PDF generated for RevealJS extension: \`${EXTENSION}\`"
-              echo "- Slides converted to PDF format at \`${EXTENSION}.pdf\`"
-              echo "- Poster image created at \`${EXTENSION}.png\`"
+              echo "- Slides converted to PDF format: \`${EXTENSION}.pdf\`"
+              echo "- Poster image created: \`${EXTENSION}.png\`"
             } >> "${GITHUB_STEP_SUMMARY}"
           else
             echo "ℹ️ Skipped PDF conversion for non-RevealJS extension: \`${EXTENSION}\`" >> "${GITHUB_STEP_SUMMARY}"
@@ -549,7 +549,8 @@ jobs:
         run: |
           REPO="${GITHUB_REPOSITORY}"
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
-          assets=("_site#Live Demo")
+          tar -czf gh-pages.tar.gz -C _site .
+          assets=("gh-pages.tar.gz#Live Demo")
           if [[ "${REPO}" == *"revealjs"* ]]; then
             assets+=("${SLIDES_PNG}#Poster" "${SLIDES_PDF}#Slides PDF")
           fi
