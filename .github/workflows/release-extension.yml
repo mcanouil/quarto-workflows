@@ -431,7 +431,7 @@ jobs:
           REPO="${GITHUB_REPOSITORY}"
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
           cd "${GH_PAGES_PATH_ARTIFACT}"
-          tar -xf artifact.tar -C _site || echo "No artifact.tar to extract"
+          mkdir _site && tar -xf artifact.tar -C _site || echo "No artifact.tar to extract"
           ls -la
           if [[ "${REPO}" == *"revealjs"* ]]; then
             SLIDES_PATH=$(find _site -name "index.html" | head -n 1)
