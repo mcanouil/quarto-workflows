@@ -58,6 +58,11 @@ jobs:
   bump-version:
     runs-on: ubuntu-latest
 
+    outputs:
+      VERSION: ${{ steps.bump-version.outputs.VERSION }}
+      RELEASE_TITLE: ${{ steps.bump-version.outputs.RELEASE_TITLE }}
+      SUMMARY: ${{ steps.bump-version.outputs.SUMMARY }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -68,6 +73,7 @@ jobs:
         run: |
           git config --local user.name github-actions[bot]
           git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
+
           if git show-ref --quiet refs/heads/${BRANCH}; then
             echo "Branch ${BRANCH} already exists."
             git branch -D "${BRANCH}"
@@ -75,19 +81,19 @@ jobs:
           fi
           git checkout -b "${BRANCH}"
 
-          REPO="${{ github.repository }}"
-          PREFIX="${{ github.repository_owner }}/quarto-"
+          REPO="${GITHUB_REPOSITORY}"
+          PREFIX="${GITHUB_REPOSITORY_OWNER}/quarto-"
           EXTENSION="${REPO#${PREFIX}}"
           EXTENSION=${EXTENSION#revealjs-}
           MANIFEST="_extensions/${EXTENSION}/_extension.yml"
-          echo "::notice ::Manifest: ${MANIFEST}"
+          echo "Manifest: ${MANIFEST}"
           DATE=$(date +%Y-%m-%d)
           CURRENT_VERSION=$(grep "^version:" "${MANIFEST}" | sed 's/version: //;s/"//g')
-          echo "::notice ::Current Version: ${CURRENT_VERSION}"
+          echo "Current Version: ${CURRENT_VERSION}"
           MAJOR=$(echo ${CURRENT_VERSION} | cut -d. -f1)
           MINOR=$(echo ${CURRENT_VERSION} | cut -d. -f2)
           PATCH=$(echo ${CURRENT_VERSION} | cut -d. -f3)
-          echo "::notice ::Bumping Version: ${BUMPVERSION}"
+          echo "Bumping Version: ${BUMPVERSION}"
           case "${BUMPVERSION}" in
             "major")
               MAJOR=$((MAJOR + 1))
@@ -104,7 +110,7 @@ jobs:
           esac
 
           VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          echo "::notice ::New Version: ${VERSION}"
+          echo "New Version: ${VERSION}"
           sed -i "s/^version:.*/version: ${VERSION}/" "${MANIFEST}"
           sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
           sed -i "s/^date-released:.*/date-released: \"${DATE}\"/" CITATION.cff
@@ -113,30 +119,32 @@ jobs:
           git commit -m "${COMMIT}" || echo "No changes to commit"
           git push --force origin ${BRANCH} || echo "No changes to push"
 
-          # Add to workflow summary
-          echo "## 📈 Version Bump Summary" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| Field | Value |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "|-------|--------|" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| Extension | \`${EXTENSION}\` |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| Previous Version | \`${CURRENT_VERSION}\` |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| New Version | \`${VERSION}\` |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| Bump Type | \`${BUMPVERSION}\` |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "| Release Date | \`${DATE}\` |" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          RELEASE_TITLE=${EXTENSION^^}
+          RELEASE_TITLE=${RELEASE_TITLE//-/ }
+          
+          SUMMARY="## 📈 Version Bump\n\n"
+          SUMMARY+="| Field | Value |\n"
+          SUMMARY+="|-------|--------|\n"
+          SUMMARY+="| Extension | \`${EXTENSION}\` |\n"
+          SUMMARY+="| Previous Version | \`${CURRENT_VERSION}\` |\n"
+          SUMMARY+="| New Version | \`${VERSION}\` |\n"
+          SUMMARY+="| Bump Type | \`${BUMPVERSION}\` |\n"
+          SUMMARY+="| Release Date | \`${DATE}\` |\n"
 
-      - name: Create Pull Request
+          {
+            echo "VERSION=${VERSION}"
+            echo "RELEASE_TITLE=${RELEASE_TITLE} ${VERSION}"
+            echo "SUMMARY=${SUMMARY}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Create and Merge Pull Request
         shell: bash
         run: |
-          sleep 20
+          sleep 5
           gh pr create --fill-first --base "main" --head "${BRANCH}" --label "Type: CI/CD :robot:"
-
-      - name: Merge Pull Request
-        shell: bash
-        run: |
-          sleep 20
+          sleep 5
           gh pr merge --auto --squash --delete-branch
-          sleep 10
+          sleep 5
 
   deploy:
     runs-on: ubuntu-latest
@@ -149,6 +157,8 @@ jobs:
 
     outputs:
       gh_pages_url: ${{ steps.deployment.outputs.page_url }}
+      gh_pages_artifact: ${{ steps.upload-artifact.outputs.artifact_id }}
+      SUMMARY: ${{ steps.deployment-summary.outputs.SUMMARY }}
 
     steps:
       - name: Checkout repository
@@ -260,9 +270,9 @@ jobs:
       - name: Check inputs
         shell: bash
         run: |
-          echo "::notice ::Quarto: ${QUARTOVERSION}"
-          echo "::notice ::TinyTeX: ${TINYTEX}"
-          echo "::notice ::Formats: ${FORMATS}"
+          echo "Quarto: ${QUARTOVERSION}"
+          echo "TinyTeX: ${TINYTEX}"
+          echo "Formats: ${FORMATS}"
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
@@ -282,7 +292,8 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload artifact
+      - name: Upload pages artifact
+        id: upload-artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: "_site"
@@ -292,24 +303,26 @@ jobs:
         uses: actions/deploy-pages@v4
 
       - name: Add deployment summary
+        id: deployment-summary
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         shell: bash
         run: |
-          {
-            echo "## 🚀 Deployment Summary"
-            echo ""
-            echo "| Field | Value |"
-            echo "|-------|--------|"
-            echo "| Quarto Version | \`${QUARTOVERSION}\` |"
-            echo "| TinyTeX | \`${TINYTEX}\` |"
-            echo "| Output Formats | \`${FORMATS}\` |"
-            echo "| GitHub Pages URL | [${{ steps.deployment.outputs.page_url }}](${{ steps.deployment.outputs.page_url }}) |"
-            echo ""
-          } >> "${GITHUB_STEP_SUMMARY}"
+          SUMMARY="## 🚀 Deployment\n\n"
+          SUMMARY+="| Field | Value |\n"
+          SUMMARY+="|-------|--------|\n"
+          SUMMARY+="| Quarto Version | \`${QUARTOVERSION}\` |\n"
+          SUMMARY+="| Output Formats | \`${FORMATS}\` |\n"
+          SUMMARY+="| GitHub Pages URL | [${PAGE_URL}](${PAGE_URL}) |\n"
+          echo "SUMMARY=${SUMMARY}" >> "${GITHUB_OUTPUT}"
 
-  screenshot:
+  title-slide-screenshot:
     runs-on: ubuntu-latest
 
     needs: deploy
+
+    outputs:
+      SUMMARY: ${{ steps.screenshot-summary.outputs.SUMMARY }}
 
     steps:
       - name: Checkout repository
@@ -326,8 +339,11 @@ jobs:
           GH_TOKEN: ${{ secrets.github_token }} # gh cli
         shell: bash
         run: |
-          REPO="${{ github.repository }}"
-          EXTENSION="${REPO#${{ github.repository_owner }}/quarto-}"
+          git config --local user.name github-actions[bot]
+          git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          REPO="${GITHUB_REPOSITORY}"
+          EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
 
           if [[ "${REPO}" == *"revealjs"* ]]; then
             npx -y decktape reveal \
@@ -349,37 +365,158 @@ jobs:
               git push origin --delete "${BRANCH}"
             fi
             git checkout -b "${BRANCH}"
-            git config --local user.name github-actions[bot]
-            git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
             git add .github/template.png || echo "No changes to add"
             if ! git diff --cached --quiet; then
               git commit -m "ci: update thumbs"
               git push --force origin ${BRANCH}
               gh pr create --fill-first --base "main" --head "${BRANCH}" --label "Type: CI/CD :robot:"
-              sleep 15
+              sleep 5
               gh pr merge --auto --squash --delete-branch
+              sleep 5
             else
               echo "No changes to commit."
             fi
           fi
 
           # Add screenshot summary
-          REPO="${{ github.repository }}"
-          EXTENSION="${REPO#${{ github.repository_owner }}/quarto-}"
-          echo "## 📸 Screenshot Summary" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
           if [[ "${REPO}" == *"revealjs"* ]]; then
-            echo "✅ Screenshot taken for RevealJS extension: \`${EXTENSION}\`" >> "${GITHUB_STEP_SUMMARY}"
-            echo "- Template image updated at \`.github/template.png\`" >> "${GITHUB_STEP_SUMMARY}"
+            SUMMARY="## 📸 Screenshot\n\n✅ Screenshot taken for RevealJS extension: \`${EXTENSION}\`\n- Template image updated at \`.github/template.png\`\n"
           else
-            echo "ℹ️ Skipped screenshot for non-RevealJS extension: \`${EXTENSION}\`" >> "${GITHUB_STEP_SUMMARY}"
+            SUMMARY="## 📸 Screenshot\n\nℹ️ Skipped screenshot for non-RevealJS extension: \`${EXTENSION}\`\n"
           fi
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Export screenshot summary
+        id: screenshot-summary
+        shell: bash
+        run: |
+          REPO="${GITHUB_REPOSITORY}"
+          EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
+          if [[ "${REPO}" == *"revealjs"* ]]; then
+            SUMMARY="## 📸 Screenshot\n\n"
+            SUMMARY+="✅ Screenshot taken for RevealJS extension: \`${EXTENSION}\`\n"
+            SUMMARY+="- Template image updated at \`.github/template.png\`\n"
+          else
+            SUMMARY="## 📸 Screenshot\n\n"
+            SUMMARY+="ℹ️ Skipped screenshot for non-RevealJS extension: \`${EXTENSION}\`\n"
+          fi
+          echo "SUMMARY=${SUMMARY}" >> "${GITHUB_OUTPUT}"
+
+  slides-to-pdf:
+    runs-on: ubuntu-latest
+
+    needs:
+      - deploy
+
+    outputs:
+      slides-pdf-exists: ${{ steps.convert-slides.outputs.SLIDES_PDF_EXISTS }}
+      slides-pdf: ${{ steps.convert-slides.outputs.SLIDES_PDF }}
+      slides-png: ${{ steps.convert-slides.outputs.SLIDES_PNG }}
+      SUMMARY: ${{ steps.convert-slides.outputs.SUMMARY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+
+      - name: Download artifact
+        id: download-pages-artifact
+        uses: actions/download-artifact@v5
+        with:
+          artifact-ids: ${{ needs.deploy.outputs.gh_pages_artifact }}
+
+      - name: Convert slides to PDF
+        id: convert-slides
+        env:
+          GH_TOKEN: ${{ secrets.github_token }} # gh cli
+        shell: bash
+        run: |
+          REPO="${GITHUB_REPOSITORY}"
+          EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
+          mkdir _site && tar -xf artifact.tar -C _site || echo "No artifact.tar to extract"
+          if [[ "${REPO}" == *"revealjs"* ]]; then
+            SLIDES_PATH=$(find _site -name "index.html" | head -n 1)
+            PDF_AUTHOR=$(grep -o '<meta name="author" content="[^"]*"' "${SLIDES_PATH}" | sed 's/<meta name="author" content="\(.*\)"/\1/')
+            PDF_TITLE=$(grep -o '<title>.*</title>' "${SLIDES_PATH}" | sed 's/<title>\(.*\)<\/title>/\1/')
+
+            sed "s/el.parentElement.parentElement.parentElement;/el.parentElement.parentElement.parentElement.parentElement;/g;" "${SLIDES_PATH}" > "${SLIDES_PATH}.decktape.html"
+
+            npx -y decktape reveal \
+              --chrome-arg="--no-sandbox" \
+              --chrome-arg="--disable-setuid-sandbox" \
+              --size "1920x1080" \
+              --screenshots \
+              --screenshots-format png \
+              --screenshots-directory . \
+              --slides 1 \
+              "${SLIDES_PATH}.decktape.html" index.pdf
+
+            rm index.pdf
+
+            mv index_1_1920x1080.png "${EXTENSION}.png"
+
+            npx -y decktape reveal \
+              --chrome-arg="--no-sandbox" \
+              --chrome-arg="--disable-setuid-sandbox" \
+              --size "1920x1080" \
+              --pause 2000 \
+              --load-pause 2000 \
+              --fragments \
+              --pdf-author "${PDF_AUTHOR}" \
+              --pdf-title "${PDF_TITLE}" \
+              "${SLIDES_PATH}.decktape.html" "${SLIDES_PATH%.html}.pdf"
+
+            mv "${SLIDES_PATH%.html}.pdf" "${EXTENSION}.pdf"
+
+            rm "${SLIDES_PATH}.decktape.html"
+
+            {
+              echo "SLIDES_PDF_EXISTS=true"
+              echo "SLIDES_PDF=${EXTENSION}.pdf"
+              echo "SLIDES_PNG=${EXTENSION}.png"
+            } >> "${GITHUB_OUTPUT}"
+            PDF_SUMMARY="## 📄 PDF Conversion\n\n"
+            PDF_SUMMARY+="✅ PDF generated for RevealJS extension: \`${EXTENSION}\`\n"
+            PDF_SUMMARY+="- Slides converted to PDF format: \`${EXTENSION}.pdf\`\n"
+            PDF_SUMMARY+="- Poster image created: \`${EXTENSION}.png\`\n"
+          else
+            {
+              echo "SLIDES_PDF_EXISTS=false"
+            } >> "${GITHUB_OUTPUT}"
+            PDF_SUMMARY="## 📄 PDF Conversion\n\n"
+            PDF_SUMMARY+="ℹ️ Skipped PDF conversion for non-RevealJS extension: \`${EXTENSION}\`\n"
+          fi
+          echo "SUMMARY=${PDF_SUMMARY}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload artifact (revealjs)
+        uses: actions/upload-artifact@v4
+        if: ${{ steps.convert-slides.outputs.SLIDES_PDF_EXISTS == 'true' }}
+        with:
+          name: extension-assets
+          path: |
+            ${{ steps.convert-slides.outputs.SLIDES_PDF }}
+            ${{ steps.convert-slides.outputs.SLIDES_PNG }}
+            ${{ steps.download-pages-artifact.outputs.download-path }}/_site
+
+      - name: Upload artifact (default)
+        uses: actions/upload-artifact@v4
+        if: ${{ steps.convert-slides.outputs.SLIDES_PDF_EXISTS == 'false' }}
+        with:
+          name: extension-assets
+          path: |
+            ${{ steps.download-pages-artifact.outputs.download-path }}/_site
 
   release:
     runs-on: ubuntu-latest
 
-    needs: [deploy, screenshot]
+    needs:
+      - bump-version
+      - deploy
+      - title-slide-screenshot
+      - slides-to-pdf
 
     steps:
       - name: Checkout repository
@@ -391,33 +528,79 @@ jobs:
           git checkout main
           git pull origin main
 
+      - name: Download PDF artifact
+        id: download-extension-assets-artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: extension-assets
+          path: assets
+
       - name: Release extension on GitHub
+        env:
+          GH_TOKEN: ${{ secrets.github_token }} # gh cli
+          GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
+          VERSION: ${{ needs.bump-version.outputs.VERSION }}
+          RELEASE_TITLE: ${{ needs.bump-version.outputs.RELEASE_TITLE }}
+          SLIDES_PNG: ${{ needs.slides-to-pdf.outputs.slides-png }}
+          SLIDES_PDF: ${{ needs.slides-to-pdf.outputs.slides-pdf }}
         shell: bash
         run: |
-          REPO="${{ github.repository }}"
-          EXTENSION="${REPO#${{ github.repository_owner }}/quarto-}"
-          EXTENSION=${EXTENSION#revealjs-}
-          MANIFEST="_extensions/${EXTENSION}/_extension.yml"
-          VERSION=$(grep "^version:" "${MANIFEST}" | sed 's/version: //;s/"//g')
-          LINE=$(grep -n "^version:" "${MANIFEST}" | cut -d: -f1)
-          echo "::notice file=${MANIFEST},line=${LINE}::Version: ${VERSION}"
-          PRTITLE=${EXTENSION^^}
-          PRTITLE=${PRTITLE//-/ }
-          gh release create ${VERSION} --title "${PRTITLE} ${VERSION}" --generate-notes
+          REPO="${GITHUB_REPOSITORY}"
+          EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
 
-          # Add final release summary
+          if [ -d assets/_site ]; then
+            tar -czf gh-pages.tar.gz -C assets/_site .
+          else
+            tar -czf gh-pages.tar.gz -C assets .
+          fi
+          assets=("gh-pages.tar.gz#GitHub Pages (tar.gz)")
+          if [[ "${REPO}" == *"revealjs"* ]]; then
+            assets+=("assets/${SLIDES_PNG}#Poster (png)" "assets/${SLIDES_PDF}#Reveal.js Slides (pdf)")
+          fi
+
+          gh release create "${VERSION}" \
+            --title "${RELEASE_TITLE}" \
+            --generate-notes \
+            "${assets[@]}"
+
+      - name: Display workflow summary
+        env:
+          BUMP_SUMMARY: ${{ needs.bump-version.outputs.SUMMARY }}
+          DEPLOY_SUMMARY: ${{ needs.deploy.outputs.SUMMARY }}
+          SCREENSHOT_SUMMARY: ${{ needs.title-slide-screenshot.outputs.SUMMARY }}
+          PDF_SUMMARY: ${{ needs.slides-to-pdf.outputs.SUMMARY }}
+          GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
+          VERSION: ${{ needs.bump-version.outputs.VERSION }}
+        shell: bash
+        run: |
+          REPO="${GITHUB_REPOSITORY}"
+          EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
+
           {
-            echo "## 🎉 Release Summary"
+            echo "# 🎉 Release Summary"
+            echo ""
+            echo "🤖 *Automated release completed successfully*"
             echo ""
             echo "### Extension Details"
             echo "- **Extension Name**: \`${EXTENSION}\`"
             echo "- **Version**: \`${VERSION}\`"
-            echo "- **Release Title**: \`${PRTITLE} ${VERSION}\`"
             echo ""
             echo "### 🔗 Links"
-            echo "- [📦 GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${VERSION})"
-            echo "- [🌐 Live Demo](${{ needs.deploy.outputs.gh_pages_url }})"
+            echo "- [📦 GitHub Release](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${VERSION})"
+            echo "- [🌐 Live Demo](${GH_PAGES_URL})"
             echo ""
             echo "---"
-            echo "🤖 *Automated release completed successfully*"
+            echo ""
           } >> "${GITHUB_STEP_SUMMARY}"
+
+          # Display all summaries
+          echo -e "${BUMP_SUMMARY}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo -e "${DEPLOY_SUMMARY}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo -e "${SCREENSHOT_SUMMARY}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo -e "${PDF_SUMMARY}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          
+          # Add final release summary

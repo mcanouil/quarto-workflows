@@ -47,10 +47,10 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
     --pdf-title "${PDF_TITLE}" \
     "${SLIDES_PATH}.decktape.html" "${SLIDES_PATH%.html}.pdf"
 
-    # Move the generated PDF to a file named after the current directory, in the same output directory
-    OUTPUT_DIR="$(dirname "${SLIDES_PATH%.html}.pdf")"
-    OUTPUT_NAME="$(basename "$(pwd)").pdf"
-    mv "${SLIDES_PATH%.html}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}"
+  # Move the generated PDF to a file named after the current directory, in the same output directory
+  OUTPUT_DIR="$(dirname "${SLIDES_PATH%.html}.pdf")"
+  OUTPUT_NAME="$(basename "$(pwd)").pdf"
+  mv "${SLIDES_PATH%.html}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}"
 
   rm "${SLIDES_PATH}.decktape.html"
 done
