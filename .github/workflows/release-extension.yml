@@ -535,6 +535,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: extension-assets
+          path: assets
 
       - name: Release extension on GitHub
         env:
@@ -549,7 +550,12 @@ jobs:
         run: |
           REPO="${GITHUB_REPOSITORY}"
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
-          tar -czf gh-pages.tar.gz -C _site .
+
+          if [ -d assets/_site ]; then
+            tar -czf gh-pages.tar.gz -C assets/_site .
+          else
+            tar -czf gh-pages.tar.gz -C assets .
+          fi
           assets=("gh-pages.tar.gz#GitHub Pages (tar.gz)")
           if [[ "${REPO}" == *"revealjs"* ]]; then
             assets+=("${SLIDES_PNG}#Poster (png)" "${SLIDES_PDF}#Reveal.js Slides (pdf)")
