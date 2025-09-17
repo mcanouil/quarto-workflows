@@ -579,6 +579,8 @@ jobs:
           {
             echo "# 🎉 Release Summary"
             echo ""
+            echo "🤖 *Automated release completed successfully*"
+            echo ""
             echo "### Extension Details"
             echo "- **Extension Name**: \`${EXTENSION}\`"
             echo "- **Version**: \`${VERSION}\`"
@@ -588,7 +590,7 @@ jobs:
             echo "- [🌐 Live Demo](${GH_PAGES_URL})"
             echo ""
             echo "---"
-            echo "🤖 *Automated release completed successfully*"
+            echo ""
           } >> "${GITHUB_STEP_SUMMARY}"
 
           # Display all summaries
