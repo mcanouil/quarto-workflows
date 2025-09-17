@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           git config --local user.name github-actions[bot]
-          git config --local user.email 41898282+github-actions[bot]@users.noreply.
+          git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
 
           if git show-ref --quiet refs/heads/${BRANCH}; then
             echo "Branch ${BRANCH} already exists."
