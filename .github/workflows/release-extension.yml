@@ -550,9 +550,9 @@ jobs:
           REPO="${GITHUB_REPOSITORY}"
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
           tar -czf gh-pages.tar.gz -C _site .
-          assets=("gh-pages.tar.gz#Live Demo")
+          assets=("gh-pages.tar.gz#GitHub Pages (.tar.gz)")
           if [[ "${REPO}" == *"revealjs"* ]]; then
-            assets+=("${SLIDES_PNG}#Poster" "${SLIDES_PDF}#Slides PDF")
+            assets+=("${SLIDES_PNG}#Poster (.png)" "${SLIDES_PDF}#Reveal.js Slides (.pdf)")
           fi
           echo "${VERSION_MESSAGE}"
           gh release create "${VERSION}" \
