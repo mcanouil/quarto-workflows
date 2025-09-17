@@ -553,21 +553,16 @@ jobs:
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
           tar -xf artifact.tar || echo "No artifact.tar to extract"
           site_asset="${GH_PAGES_PATH_ARTIFACT}/_site"
+          assets=("${site_asset}#Live Demo")
           if [[ "${REPO}" == *"revealjs"* ]]; then
             poster_asset="${SLIDES_PATH_ARTIFACT}/${SLIDES_PNG}"
             pdf_asset="${SLIDES_PATH_ARTIFACT}/${SLIDES_PDF}"
-            gh release create ${VERSION} \
-              --title "${RELEASE_TITLE}" \
-              --generate-notes \
-              "${poster_asset}#Poster" \
-              "${pdf_asset}#Slides PDF" \
-              "${site_asset}#Live Demo"
-          else
-            gh release create ${VERSION} \
-              --title "${RELEASE_TITLE}" \
-              --generate-notes \
-              "${site_asset}#Live Demo"
+            assets+=("${poster_asset}#Poster" "${pdf_asset}#Slides PDF")
           fi
+          gh release create "${VERSION}" \
+            --title "${RELEASE_TITLE}" \
+            --generate-notes \
+            "${assets[@]}"
 
           # Add final release summary
           {
