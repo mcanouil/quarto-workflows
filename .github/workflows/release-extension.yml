@@ -550,6 +550,7 @@ jobs:
         run: |
           REPO="${GITHUB_REPOSITORY}"
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
+          ls -la
           tar -xf artifact.tar || echo "No artifact.tar to extract"
           site_asset="${GH_PAGES_PATH_ARTIFACT}/_site"
           assets=("${site_asset}#Live Demo")
