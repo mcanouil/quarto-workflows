@@ -60,7 +60,6 @@ jobs:
 
     outputs:
       VERSION: ${{ steps.bump-version.outputs.VERSION }}
-      VERSION_MESSAGE: ${{ steps.bump-version.outputs.VERSION_MESSAGE }}
       RELEASE_TITLE: ${{ steps.bump-version.outputs.RELEASE_TITLE }}
       SUMMARY: ${{ steps.bump-version.outputs.SUMMARY }}
 
@@ -134,7 +133,6 @@ jobs:
 
           {
             echo "VERSION=${VERSION}"
-            echo "VERSION_MESSAGE=::notice file=${MANIFEST},line=${LINE}::Version: ${VERSION}"
             echo "RELEASE_TITLE=${RELEASE_TITLE} ${VERSION}"
             echo "SUMMARY=${SUMMARY}"
           } >> "${GITHUB_OUTPUT}"
@@ -542,7 +540,6 @@ jobs:
           GH_TOKEN: ${{ secrets.github_token }} # gh cli
           GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
           VERSION: ${{ needs.bump-version.outputs.VERSION }}
-          VERSION_MESSAGE: ${{ needs.bump-version.outputs.VERSION_MESSAGE }}
           RELEASE_TITLE: ${{ needs.bump-version.outputs.RELEASE_TITLE }}
           SLIDES_PNG: ${{ needs.slides-to-pdf.outputs.slides-png }}
           SLIDES_PDF: ${{ needs.slides-to-pdf.outputs.slides-pdf }}
@@ -560,7 +557,7 @@ jobs:
           if [[ "${REPO}" == *"revealjs"* ]]; then
             assets+=("assets/${SLIDES_PNG}#Poster (png)" "assets/${SLIDES_PDF}#Reveal.js Slides (pdf)")
           fi
-          echo "${VERSION_MESSAGE}"
+
           gh release create "${VERSION}" \
             --title "${RELEASE_TITLE}" \
             --generate-notes \
