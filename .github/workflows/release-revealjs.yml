@@ -50,24 +50,22 @@ jobs:
           VERSION=${DATE//-/.}
           sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
           sed -i "s/^date-released:.*/date-released: \"${DATE}\"/" CITATION.cff
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "date=${DATE}" >> $GITHUB_OUTPUT
+          {
+            echo "version=${VERSION}"
+            echo "date=${DATE}"
+          } >> "${GITHUB_OUTPUT}"
           git add CITATION.cff || echo "No changes to add"
           git commit -m "${COMMIT}" || echo "No changes to commit"
           git push --force origin ${BRANCH} || echo "No changes to push"
 
-      - name: Create Pull Request
+      - name: Create and Merge Pull Request
         shell: bash
         run: |
-          sleep 20
+          sleep 5
           gh pr create --fill-first --base "main" --head "${BRANCH}" --label "Type: CI/CD :robot:"
-
-      - name: Merge Pull Request
-        shell: bash
-        run: |
-          sleep 20
+          sleep 5
           gh pr merge --auto --squash --delete-branch
-          sleep 10
+          sleep 5
   
   deploy:
     runs-on: ubuntu-latest
