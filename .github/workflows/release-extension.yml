@@ -114,16 +114,16 @@ jobs:
           git push --force origin ${BRANCH} || echo "No changes to push"
 
           # Add to workflow summary
-          echo "## 📈 Version Bump Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Extension | \`${EXTENSION}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Previous Version | \`${CURRENT_VERSION}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| New Version | \`${VERSION}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Bump Type | \`${BUMPVERSION}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Release Date | \`${DATE}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📈 Version Bump Summary" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Field | Value |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "|-------|--------|" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Extension | \`${EXTENSION}\` |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Previous Version | \`${CURRENT_VERSION}\` |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| New Version | \`${VERSION}\` |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Bump Type | \`${BUMPVERSION}\` |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Release Date | \`${DATE}\` |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Create Pull Request
         shell: bash
@@ -160,9 +160,9 @@ jobs:
           R: ${{ inputs.r }}
         run: |
           if [ "${R}" = "true" ] && [ -f "renv.lock" ]; then
-            echo "renv=true" >> $GITHUB_OUTPUT
+            echo "renv=true" >> "${GITHUB_OUTPUT}"
           else
-            echo "renv=false" >> $GITHUB_OUTPUT
+            echo "renv=false" >> "${GITHUB_OUTPUT}"
           fi
 
       - name: Set up R
@@ -191,14 +191,14 @@ jobs:
           PYTHON: ${{ inputs.python }}
         run: |
           if [ "${PYTHON}" = "true" ] && [ -f "pyproject.toml" ]; then
-            echo "python=true" >> $GITHUB_OUTPUT
+            echo "python=true" >> "${GITHUB_OUTPUT}"
           else
-            echo "python=false" >> $GITHUB_OUTPUT
+            echo "python=false" >> "${GITHUB_OUTPUT}"
           fi
           if [ "${PYTHON}" = "true" ] && [ -f "uv.lock" ]; then
-            echo "uv=true" >> $GITHUB_OUTPUT
+            echo "uv=true" >> "${GITHUB_OUTPUT}"
           else
-            echo "uv=false" >> $GITHUB_OUTPUT
+            echo "uv=false" >> "${GITHUB_OUTPUT}"
           fi
 
       - name: Install uv
@@ -294,15 +294,17 @@ jobs:
       - name: Add deployment summary
         shell: bash
         run: |
-          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Quarto Version | \`${QUARTOVERSION}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| TinyTeX | \`${TINYTEX}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Output Formats | \`${FORMATS}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| GitHub Pages URL | [${{ steps.deployment.outputs.page_url }}](${{ steps.deployment.outputs.page_url }}) |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## 🚀 Deployment Summary"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|--------|"
+            echo "| Quarto Version | \`${QUARTOVERSION}\` |"
+            echo "| TinyTeX | \`${TINYTEX}\` |"
+            echo "| Output Formats | \`${FORMATS}\` |"
+            echo "| GitHub Pages URL | [${{ steps.deployment.outputs.page_url }}](${{ steps.deployment.outputs.page_url }}) |"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
 
   screenshot:
     runs-on: ubuntu-latest
@@ -364,15 +366,15 @@ jobs:
           # Add screenshot summary
           REPO="${{ github.repository }}"
           EXTENSION="${REPO#${{ github.repository_owner }}/quarto-}"
-          echo "## 📸 Screenshot Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📸 Screenshot Summary" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
           if [[ "${REPO}" == *"revealjs"* ]]; then
-            echo "✅ Screenshot taken for RevealJS extension: \`${EXTENSION}\`" >> $GITHUB_STEP_SUMMARY
-            echo "- Template image updated at \`.github/template.png\`" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Screenshot taken for RevealJS extension: \`${EXTENSION}\`" >> "${GITHUB_STEP_SUMMARY}"
+            echo "- Template image updated at \`.github/template.png\`" >> "${GITHUB_STEP_SUMMARY}"
           else
-            echo "ℹ️ Skipped screenshot for non-RevealJS extension: \`${EXTENSION}\`" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ Skipped screenshot for non-RevealJS extension: \`${EXTENSION}\`" >> "${GITHUB_STEP_SUMMARY}"
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
 
   release:
     runs-on: ubuntu-latest
@@ -404,16 +406,18 @@ jobs:
           gh release create ${VERSION} --title "${PRTITLE} ${VERSION}" --generate-notes
 
           # Add final release summary
-          echo "## 🎉 Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Extension Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Extension Name**: \`${EXTENSION}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Release Title**: \`${PRTITLE} ${VERSION}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
-          echo "- [📦 GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${VERSION})" >> $GITHUB_STEP_SUMMARY
-          echo "- [🌐 Live Demo](${{ needs.deploy.outputs.gh_pages_url }})" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "🤖 *Automated release completed successfully*" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## 🎉 Release Summary"
+            echo ""
+            echo "### Extension Details"
+            echo "- **Extension Name**: \`${EXTENSION}\`"
+            echo "- **Version**: \`${VERSION}\`"
+            echo "- **Release Title**: \`${PRTITLE} ${VERSION}\`"
+            echo ""
+            echo "### 🔗 Links"
+            echo "- [📦 GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${VERSION})"
+            echo "- [🌐 Live Demo](${{ needs.deploy.outputs.gh_pages_url }})"
+            echo ""
+            echo "---"
+            echo "🤖 *Automated release completed successfully*"
+          } >> "${GITHUB_STEP_SUMMARY}"
