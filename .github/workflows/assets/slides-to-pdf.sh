@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-if [ -z "${QUARTO_PROJECT_RENDER_ALL}" ]; then
-  exit 0
-fi
+# if [ -z "${QUARTO_PROJECT_RENDER_ALL}" ]; then
+#   exit 0
+# fi
 
 HTML_FILES=$(echo "${QUARTO_PROJECT_OUTPUT_FILES}" | tr ' ' '\n' | grep -E '\.html$')
 
