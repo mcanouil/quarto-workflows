@@ -591,16 +591,12 @@ jobs:
             echo ""
             echo "---"
             echo ""
+            echo -e "${BUMP_SUMMARY}"
+            echo ""
+            echo -e "${DEPLOY_SUMMARY}"
+            echo ""
+            echo -e "${SCREENSHOT_SUMMARY}"
+            echo ""
+            echo -e "${PDF_SUMMARY}"
+            echo ""
           } >> "${GITHUB_STEP_SUMMARY}"
-
-          # Display all summaries
-          echo -e "${BUMP_SUMMARY}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          echo -e "${DEPLOY_SUMMARY}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          echo -e "${SCREENSHOT_SUMMARY}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          echo -e "${PDF_SUMMARY}" >> "${GITHUB_STEP_SUMMARY}"
-          echo "" >> "${GITHUB_STEP_SUMMARY}"
-          
-          # Add final release summary
