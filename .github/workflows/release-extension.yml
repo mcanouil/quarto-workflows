@@ -229,13 +229,13 @@ jobs:
 
       - name: Set up Python
         if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.python == 'true' }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version-file: "pyproject.toml"
 
       - name: Set up Python
         if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.python == 'false' }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
 
       - name: Install Python dependencies
         if: ${{ inputs.python == 'true' }}
