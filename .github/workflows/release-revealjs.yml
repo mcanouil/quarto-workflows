@@ -48,8 +48,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          fetch-tags: true
 
       - name: Bump Version
         id: bump-version
@@ -64,19 +62,21 @@ jobs:
           fi
           git checkout -b "${BRANCH}"
 
-          ORIGINAL_DATE=$(date +%Y-%m-%d)
-          ORIGINAL_VERSION=${ORIGINAL_DATE//-/.}
-          SUFFIX=1
-          DATE="${ORIGINAL_DATE}"
+          CURRENT_DATE=$(date +%Y-%m-%d)
+          DATE=$(grep '^date-released:' CITATION.cff | awk '{print $2}' | tr -d '"')
+          VERSION=$(grep '^version:' CITATION.cff | awk '{print $2}')
+          if [ "${DATE}" = "${CURRENT_DATE}" ]; then
+            if [[ "${VERSION}" =~ -([0-9]+)$ ]]; then
+              NUMBER=$(( ${BASH_REMATCH[1]} + 1 ))
+              VERSION="${VERSION%-*}-${NUMBER}"
+            else
+              VERSION="${VERSION}-2"
+            fi
+          else
+            VERSION=${CURRENT_DATE//-/.}
+          fi
+          DATE="${CURRENT_DATE}"
           sed -i "s/^date-released:.*/date-released: \"${DATE}\"/" CITATION.cff
-          VERSION="${ORIGINAL_VERSION}"
-          while git tag | grep -q "^${VERSION}$"; do
-            SUFFIX=$((SUFFIX + 1))
-            VERSION="${ORIGINAL_VERSION}-${SUFFIX}"
-            DATE="${ORIGINAL_DATE} (${SUFFIX})"
-          done
-          echo "Final version to be used: ${VERSION}"
-          echo "Final date to be used: ${DATE}"
           sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
 
           git add CITATION.cff || echo "No changes to add"
