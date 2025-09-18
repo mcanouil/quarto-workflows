@@ -56,10 +56,10 @@ jobs:
       - name: Create GitHub App token
         uses: actions/create-github-app-token@v2
         id: app-token
-        if: ${{ inputs.gh-app-id != '' && secrets.APP_KEY!= '' }}
+        if: ${{ inputs.gh-app-id != '' }}
         with:
           app-id: ${{ inputs.gh-app-id }}
-          private-key: ${{ secrets.APP_KEY}}
+          private-key: ${{ secrets.APP_KEY }}
 
       - name: Get GitHub App User ID
         id: get-user-id
@@ -156,10 +156,10 @@ jobs:
       - name: Create GitHub App token
         uses: actions/create-github-app-token@v2
         id: app-token
-        if: ${{ inputs.gh-app-id != '' && secrets.APP_KEY!= '' }}
+        if: ${{ inputs.gh-app-id != '' }}
         with:
           app-id: ${{ inputs.gh-app-id }}
-          private-key: ${{ secrets.APP_KEY}}
+          private-key: ${{ secrets.APP_KEY }}
 
       - name: Get GitHub App User ID
         id: get-user-id
@@ -401,10 +401,10 @@ jobs:
       - name: Create GitHub App token
         uses: actions/create-github-app-token@v2
         id: app-token
-        if: ${{ inputs.gh-app-id != '' && secrets.APP_KEY!= '' }}
+        if: ${{ inputs.gh-app-id != '' }}
         with:
           app-id: ${{ inputs.gh-app-id }}
-          private-key: ${{ secrets.APP_KEY}}
+          private-key: ${{ secrets.APP_KEY }}
 
       - name: Get GitHub App User ID
         id: get-user-id
