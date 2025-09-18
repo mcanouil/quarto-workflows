@@ -52,10 +52,19 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
     "${SLIDES_PATH}.decktape.html" "${SLIDES_PATH%.html}.pdf"
 
   # Move the generated PDF to a file named after the current directory, in the same output directory
-  OUTPUT_DIR="$(dirname "${SLIDES_PATH%.html}.pdf")"
-  OUTPUT_NAME="$(basename "$(pwd)")"
-  mv "${SLIDES_PATH%.html}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf"
-  mv "${SLIDES_PATH%.html}.png" "${OUTPUT_DIR}/${OUTPUT_NAME}.png"
+  OUTPUT_DIR=$(dirname "${SLIDES_PATH%.html}.pdf")
+  SLIDES_BASENAME=$(basename "${SLIDES_PATH%.html}")
+  if [ "${SLIDES_BASENAME}" = "index" ]; then
+    mv "${SLIDES_BASENAME}.pdf" "${OUTPUT_DIR}/${SLIDES_BASENAME}.pdf"
+    mv "${SLIDES_BASENAME}.png" "${OUTPUT_DIR}/${SLIDES_BASENAME}.png"
+    OUTPUT_NAME=$(basename "$(pwd)")
+    mv "${SLIDES_BASENAME}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf"
+    mv "${SLIDES_BASENAME}.png" "${OUTPUT_DIR}/${OUTPUT_NAME}.png"
+  else
+    OUTPUT_NAME="${SLIDES_BASENAME}"
+    mv "${SLIDES_BASENAME}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf"
+    mv "${SLIDES_BASENAME}.png" "${OUTPUT_DIR}/${OUTPUT_NAME}.png"
+  fi
 
   if [ "${CI}" == "true" ]; then
     cp "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf" release_assets/
@@ -67,10 +76,10 @@ done
 
 if [ "${CI}" == "true" ]; then
   if [ -n "${SLIDES_FILES}" ]; then
-    echo "SLIDES_ASSETS_EXISTS=true" >> "${GITHUB_OUTPUT}"
+    echo "slides_assets_exists=true" >> "${GITHUB_OUTPUT}"
     RELEASE_ASSETS_PATH="$(pwd)/release_assets"
-    echo "RELEASE_ASSETS_PATH=${RELEASE_ASSETS_PATH}" >> "${GITHUB_OUTPUT}"
+    echo "release_assets_path=${RELEASE_ASSETS_PATH}" >> "${GITHUB_OUTPUT}"
   else
-    echo "SLIDES_ASSETS_EXISTS=false" >> "${GITHUB_OUTPUT}"
+    echo "slides_assets_exists=false" >> "${GITHUB_OUTPUT}"
   fi
 fi
