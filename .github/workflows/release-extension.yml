@@ -46,15 +46,16 @@ on:
         description: "GitHub App ID"
         required: false
         type: string
+      gh-app-key:
+        description: "GitHub App Private Key"
+        required: false
+        type: string
 
 permissions:
   contents: write
   pull-requests: write
   id-token: write
   pages: write
-
-env:
-  GH_TOKEN: ${{ inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
 
 jobs:
   bump-version:
@@ -74,8 +75,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Create GitHub App token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        if: ${{ inputs.gh-app-id != '' && secrets.APP_KEY != '' }}
+        with:
+          app-id: ${{ inputs.gh-app-id }}
+          private-key: ${{ secrets.APP_KEY }}
+
+      - name: Get GitHub App User ID
+        id: get-user-id
+        if: ${{ steps.app-token.outputs.app-slug != '' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          echo "user-id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure Environment for Git User
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          USER_ID: ${{ steps.get-user-id.outputs.user-id }}
+        run: |
+          if [ -z "${APP_SLUG}" ]; then
+            USER_NAME="github-actions[bot]"
+            USER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          else
+            USER_NAME="${APP_SLUG}[bot]"
+            USER_EMAIL="${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+          fi
+          echo "GIT_USER_NAME=${APP_SLUG}" >> "${GITHUB_ENV}"
+          echo "GIT_USER_EMAIL=${APP_SLUG}" >> "${GITHUB_ENV}"
+
       - name: Bump Version
         id: bump-version
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
         shell: bash
         run: |
           git config --local user.name "${GIT_USER_NAME}"
@@ -418,6 +453,7 @@ jobs:
       - name: Update template thumbnail
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
         env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
           RELEASE_ASSETS_PATH: ${{ steps.render-quarto.outputs.release_assets_path }}
           BRANCH: ci/update-thumbs
           COMMIT: "ci: update thumbs :art:"
@@ -519,6 +555,7 @@ jobs:
 
       - name: Release extension on GitHub
         env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
           VERSION: ${{ needs.bump-version.outputs.version }}
           RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
         shell: bash

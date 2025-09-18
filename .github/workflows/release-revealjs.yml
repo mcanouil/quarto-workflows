@@ -31,15 +31,16 @@ on:
         description: "GitHub App ID"
         required: false
         type: string
+      gh-app-key:
+        description: "GitHub App Private Key"
+        required: false
+        type: string
 
 permissions:
   contents: write
   pull-requests: write
   id-token: write
   pages: write
-
-env:
-  GH_TOKEN: ${{ inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
 
 jobs:
   bump-version:
@@ -88,6 +89,7 @@ jobs:
       - name: Bump Version
         id: bump-version
         env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
           BRANCH: ci/bump-version
           COMMIT: "ci: bump version for release :rocket:"
         shell: bash
@@ -306,6 +308,8 @@ jobs:
 
       - name: Render Quarto Project
         id: render-quarto
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
         shell: bash
         run: |
           npm install -g decktape
@@ -442,6 +446,7 @@ jobs:
 
       - name: Release extension on GitHub
         env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
           VERSION: ${{ needs.bump-version.outputs.version }}
           DATE: ${{ needs.bump-version.outputs.date }}
         shell: bash
