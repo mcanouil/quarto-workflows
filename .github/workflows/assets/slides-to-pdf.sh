@@ -8,10 +8,10 @@ set -e
 
 QUARTO_OUTPUT_DIRECTORY=${OUTPUT_DIRECTORY:-"_site"}
 
-CHROME_PATH_ARG=""
-if [ -n "${QUARTO_CHROMIUM}" ]; then
-  CHROME_PATH_ARG="--chrome-path=${QUARTO_CHROMIUM}"
-fi
+# CHROME_PATH_ARG=""
+# if [ -n "${QUARTO_CHROMIUM}" ]; then
+#   CHROME_PATH_ARG="--chrome-path=${QUARTO_CHROMIUM}"
+# fi
 
 HTML_FILES=$(echo "${QUARTO_PROJECT_OUTPUT_FILES}" | tr ' ' '\n' | grep -E '\.html$')
 
@@ -37,7 +37,6 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
   sed "s/el.parentElement.parentElement.parentElement;/el.parentElement.parentElement.parentElement.parentElement;/g;" "${SLIDES_PATH}" > "${SLIDES_PATH}.decktape.html"
 
   npx -y decktape reveal \
-    "${CHROME_PATH_ARG}" \
     --chrome-arg="--no-sandbox" \
     --chrome-arg="--disable-setuid-sandbox" \
     --size "1920x1080" \
