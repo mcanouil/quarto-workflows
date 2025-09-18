@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 # if [ -z "${QUARTO_PROJECT_RENDER_ALL}" ]; then
 #   exit 0
 # fi
