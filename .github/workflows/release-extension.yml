@@ -120,6 +120,12 @@ jobs:
           git commit -m "${COMMIT}" || echo "No changes to commit"
           git push --force origin ${BRANCH} || echo "No changes to push"
 
+          sleep 5
+          gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
+          sleep 5
+          gh pr merge --auto --squash --delete-branch
+          sleep 5
+
           RELEASE_TITLE=${EXTENSION^^}
           RELEASE_TITLE=${RELEASE_TITLE//-/ }
 
@@ -137,15 +143,6 @@ jobs:
             echo "release_title=${RELEASE_TITLE} ${VERSION}"
             echo "summary=${SUMMARY}"
           } >> "${GITHUB_OUTPUT}"
-
-      - name: Create and Merge Pull Request
-        shell: bash
-        run: |
-          sleep 5
-          gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
-          sleep 5
-          gh pr merge --auto --squash --delete-branch
-          sleep 5
 
   deploy:
     runs-on: ubuntu-latest

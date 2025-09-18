@@ -77,23 +77,19 @@ jobs:
           echo "Final date to be used: ${DATE}"
           sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
 
-          {
-            echo "version=${VERSION}"
-            echo "date=${DATE}"
-          } >> "${GITHUB_OUTPUT}"
-
           git add CITATION.cff || echo "No changes to add"
           git commit -m "${COMMIT}" || echo "No changes to commit"
           git push --force origin ${BRANCH} || echo "No changes to push"
-
-      - name: Create and Merge Pull Request
-        shell: bash
-        run: |
           sleep 5
           gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
           sleep 5
           gh pr merge --auto --squash --delete-branch
           sleep 5
+
+          {
+            echo "version=${VERSION}"
+            echo "date=${DATE}"
+          } >> "${GITHUB_OUTPUT}"
 
   deploy:
     runs-on: ubuntu-latest
