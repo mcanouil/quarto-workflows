@@ -2,6 +2,13 @@ name: Release Quarto Extension
 
 on:
   workflow_call:
+    secrets:
+      GITHUB_TOKEN:
+        description: "GitHub token"
+        required: false
+      APP_KEY:
+        description: "GitHub App private key"
+        required: false
     inputs:
       version:
         description: "Version"
@@ -38,16 +45,8 @@ on:
         required: false
         default: false
         type: boolean
-      gh-token:
-        description: "GitHub Token"
-        required: false
-        type: string
       gh-app-id:
         description: "GitHub App ID"
-        required: false
-        type: string
-      gh-app-key:
-        description: "GitHub App Private Key"
         required: false
         type: string
 
@@ -78,10 +77,10 @@ jobs:
       - name: Create GitHub App token
         uses: actions/create-github-app-token@v2
         id: app-token
-        if: ${{ inputs.gh-app-id != '' && inputs.gh-app-key != '' }}
+        if: ${{ inputs.gh-app-id != '' && secrets.APP_KEY!= '' }}
         with:
           app-id: ${{ inputs.gh-app-id }}
-          private-key: ${{ inputs.gh-app-key }}
+          private-key: ${{ secrets.APP_KEY}}
 
       - name: Get GitHub App User ID
         id: get-user-id
@@ -110,7 +109,7 @@ jobs:
       - name: Bump Version
         id: bump-version
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }} # gh cli
         shell: bash
         run: |
           git config --local user.name "${GIT_USER_NAME}"
@@ -211,10 +210,10 @@ jobs:
       - name: Create GitHub App token
         uses: actions/create-github-app-token@v2
         id: app-token
-        if: ${{ inputs.gh-app-id != '' && inputs.gh-app-key != '' }}
+        if: ${{ inputs.gh-app-id != '' && secrets.APP_KEY!= '' }}
         with:
           app-id: ${{ inputs.gh-app-id }}
-          private-key: ${{ inputs.gh-app-key }}
+          private-key: ${{ secrets.APP_KEY}}
 
       - name: Get GitHub App User ID
         id: get-user-id
@@ -453,7 +452,7 @@ jobs:
       - name: Update template thumbnail
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }} # gh cli
           RELEASE_ASSETS_PATH: ${{ steps.render-quarto.outputs.release_assets_path }}
           BRANCH: ci/update-thumbs
           COMMIT: "ci: update thumbs :art:"
@@ -511,10 +510,10 @@ jobs:
       - name: Create GitHub App token
         uses: actions/create-github-app-token@v2
         id: app-token
-        if: ${{ inputs.gh-app-id != '' && inputs.gh-app-key != '' }}
+        if: ${{ inputs.gh-app-id != '' && secrets.APP_KEY!= '' }}
         with:
           app-id: ${{ inputs.gh-app-id }}
-          private-key: ${{ inputs.gh-app-key }}
+          private-key: ${{ secrets.APP_KEY}}
 
       - name: Get GitHub App User ID
         id: get-user-id
@@ -555,7 +554,7 @@ jobs:
 
       - name: Release extension on GitHub
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }} # gh cli
           VERSION: ${{ needs.bump-version.outputs.version }}
           RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
         shell: bash

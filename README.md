@@ -62,9 +62,6 @@ jobs:
       r: false
       python: false
       julia: false
-      gh-token: "${{ secrets.GITHUB_TOKEN }}"
-      gh-app-id: "${{ vars.APP_ID }}"
-      gh-app-key: "${{ secrets.APP_KEY }}"
 ```
 
 ### [`release-revealjs.yml`](.github/workflows/release-revealjs.yml)
@@ -105,7 +102,4 @@ jobs:
       r: false
       python: false
       julia: false
-      gh-token: "${{ secrets.GITHUB_TOKEN }}"
-      gh-app-id: "${{ vars.APP_ID }}"
-      gh-app-key: "${{ secrets.APP_KEY }}"
 ```
