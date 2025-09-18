@@ -81,7 +81,7 @@ jobs:
           sleep 5
           gh pr merge --auto --squash --delete-branch
           sleep 5
-  
+
   deploy:
     runs-on: ubuntu-latest
 
@@ -222,10 +222,42 @@ jobs:
         shell: bash
         run: |
           npm install -g decktape
-          echo -e "project:\n  output-dir: _site\n  post-render:\n    - workflows/.github/workflows/assets/slides-to-pdf.sh" > _quarto.yml
+
+          # Create or update _quarto.yml with intelligent merging
+          SLIDES_SCRIPT="workflows/.github/workflows/assets/slides-to-pdf.sh"
+          if [ ! -f "_quarto.yml" ]; then
+            # Create new _quarto.yml if it doesn't exist
+            {
+              echo "project:"
+              echo "  output-dir: _site"
+              echo "  post-render:"
+              echo "    - ${SLIDES_SCRIPT}"
+            } > _quarto.yml
+          else
+            # Update existing _quarto.yml
+            echo "Existing _quarto.yml found, merging configuration..."
+            # Set output-dir (always overwrite)
+            yq eval '.project.output-dir = "_site"' -i _quarto.yml
+            # Handle post-render array merging
+            if yq eval '.project.post-render' _quarto.yml | grep -q "null"; then
+              # No post-render exists, create it
+              yq eval '.project.post-render = ["'${SLIDES_SCRIPT}'"]' -i _quarto.yml
+            else
+              # Check if our script is already in the post-render list
+              if ! yq eval '.project.post-render[] | select(. == "'${SLIDES_SCRIPT}'")' _quarto.yml | grep -q "${SLIDES_SCRIPT}"; then
+                # Add our script to the existing post-render list
+                yq eval '.project.post-render += ["'${SLIDES_SCRIPT}'"]' -i _quarto.yml
+              else
+                echo "Script already exists in post-render list, skipping..."
+              fi
+            fi
+          fi
+          echo "Updated _quarto.yml:"
+          cat _quarto.yml
+
           quarto render
           tar -czf gh-pages.tar.gz -C _site .
-      
+
       - name: Upload artifact (revealjs)
         uses: actions/upload-artifact@v4
         if: ${{ steps.deploy.outputs.slides_assets_exists == 'true' }}
