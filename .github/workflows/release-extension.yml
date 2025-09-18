@@ -109,7 +109,7 @@ jobs:
       - name: Bump Version
         id: bump-version
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }} # gh cli
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }} # gh cli
         shell: bash
         run: |
           git config --local user.name "${GIT_USER_NAME}"
@@ -452,7 +452,7 @@ jobs:
       - name: Update template thumbnail
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }} # gh cli
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }} # gh cli
           RELEASE_ASSETS_PATH: ${{ steps.render-quarto.outputs.release_assets_path }}
           BRANCH: ci/update-thumbs
           COMMIT: "ci: update thumbs :art:"
@@ -554,7 +554,7 @@ jobs:
 
       - name: Release extension on GitHub
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }} # gh cli
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }} # gh cli
           VERSION: ${{ needs.bump-version.outputs.version }}
           RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
         shell: bash
