@@ -141,7 +141,7 @@ jobs:
         shell: bash
         run: |
           sleep 5
-          gh pr create --fill-first --base "main" --head "${BRANCH}" --label "Type: CI/CD :robot:"
+          gh pr create --fill-first --base "${GITHUB_BASE_REF}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
           sleep 5
           gh pr merge --auto --squash --delete-branch
           sleep 5
@@ -166,8 +166,8 @@ jobs:
       - name: Update branch
         run: |
           git fetch --all
-          git checkout main
-          git pull origin main
+          git checkout "${GITHUB_BASE_REF}"
+          git pull origin "${GITHUB_BASE_REF}"
 
       - name: Check R environment
         id: check-r-env
@@ -397,7 +397,7 @@ jobs:
             if ! git diff --cached --quiet; then
               git commit -m "${COMMIT}"
               git push --force origin ${BRANCH}
-              gh pr create --fill-first --base "main" --head "${BRANCH}" --label "Type: CI/CD :robot:"
+              gh pr create --fill-first --base "${GITHUB_BASE_REF}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
               sleep 5
               gh pr merge --auto --squash --delete-branch
               sleep 5
@@ -428,6 +428,15 @@ jobs:
       - deploy
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update branch
+        run: |
+          git fetch --all
+          git checkout "${GITHUB_BASE_REF}"
+          git pull origin "${GITHUB_BASE_REF}"
+
       - name: Download PDF artifact
         id: download-release-assets-artifact
         uses: actions/download-artifact@v5
