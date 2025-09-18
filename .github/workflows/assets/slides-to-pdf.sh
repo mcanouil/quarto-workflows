@@ -56,8 +56,6 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
   SLIDES_PATH_NO_EXT="${SLIDES_PATH%.html}"
   SLIDES_BASENAME=$(basename "${SLIDES_PATH_NO_EXT}")
   if [ "${SLIDES_BASENAME}" = "index" ]; then
-    mv "${SLIDES_PATH_NO_EXT}.pdf" "${OUTPUT_DIR}/${SLIDES_BASENAME}.pdf"
-    mv "${SLIDES_PATH_NO_EXT}.png" "${OUTPUT_DIR}/${SLIDES_BASENAME}.png"
     OUTPUT_NAME=$(basename "$(pwd)")
     mv "${SLIDES_PATH_NO_EXT}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf"
     mv "${SLIDES_PATH_NO_EXT}.png" "${OUTPUT_DIR}/${OUTPUT_NAME}.png"
