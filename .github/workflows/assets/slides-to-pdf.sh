@@ -57,6 +57,9 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
   SLIDES_BASENAME=$(basename "${SLIDES_PATH_NO_EXT}")
   if [ "${SLIDES_BASENAME}" = "index" ]; then
     OUTPUT_NAME=$(basename "${OUTPUT_DIR}")
+    if [ "${OUTPUT_NAME}" = "_site" ]; then
+      OUTPUT_NAME=$(basename "$(pwd)")
+    fi
     cp "${SLIDES_PATH_NO_EXT}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf"
     cp "${SLIDES_PATH_NO_EXT}.png" "${OUTPUT_DIR}/${OUTPUT_NAME}.png"
   else
