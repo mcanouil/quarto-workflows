@@ -65,7 +65,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Bump Version
         id: bump-version
@@ -161,7 +161,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Update branch
         run: |
@@ -283,7 +283,7 @@ jobs:
           tinytex: "${{ env.TINYTEX }}"
 
       - name: Checkout repository with sparse checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: mcanouil/quarto-workflows
           sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
@@ -430,7 +430,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Update branch
         run: |
