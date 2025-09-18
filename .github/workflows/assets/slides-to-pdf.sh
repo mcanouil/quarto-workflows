@@ -6,6 +6,13 @@ set -e
 #   exit 0
 # fi
 
+QUARTO_OUTPUT_DIRECTORY=${OUTPUT_DIRECTORY:-"_site"}
+
+CHROME_PATH_ARG=""
+if [ -n "${QUARTO_CHROMIUM}" ]; then
+  CHROME_PATH_ARG="--chrome-path=${QUARTO_CHROMIUM}"
+fi
+
 HTML_FILES=$(echo "${QUARTO_PROJECT_OUTPUT_FILES}" | tr ' ' '\n' | grep -E '\.html$')
 
 SLIDES_FILES=""
@@ -30,6 +37,7 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
   sed "s/el.parentElement.parentElement.parentElement;/el.parentElement.parentElement.parentElement.parentElement;/g;" "${SLIDES_PATH}" > "${SLIDES_PATH}.decktape.html"
 
   npx -y decktape reveal \
+    "${CHROME_PATH_ARG}" \
     --chrome-arg="--no-sandbox" \
     --chrome-arg="--disable-setuid-sandbox" \
     --size "1920x1080" \
@@ -53,27 +61,27 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
     --pdf-title "${PDF_TITLE}" \
     "${SLIDES_PATH}.decktape.html" "${SLIDES_PATH%.html}.pdf"
 
-  # Move the generated PDF to a file named after the current directory, in the same output directory
-  OUTPUT_DIR=$(dirname "${SLIDES_PATH}")
-  SLIDES_PATH_NO_EXT="${SLIDES_PATH%.html}"
-  SLIDES_BASENAME=$(basename "${SLIDES_PATH_NO_EXT}")
-  if [ "${SLIDES_BASENAME}" = "index" ]; then
-    OUTPUT_NAME=$(basename "${OUTPUT_DIR}")
-    if [ "${OUTPUT_NAME}" = "_site" ]; then
-      OUTPUT_NAME=$(basename "$(pwd)")
-    fi
-    cp "${SLIDES_PATH_NO_EXT}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf"
-    cp "${SLIDES_PATH_NO_EXT}.png" "${OUTPUT_DIR}/${OUTPUT_NAME}.png"
-  else
-    OUTPUT_NAME="${SLIDES_BASENAME}"
-    mv "${SLIDES_PATH_NO_EXT}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf"
-    mv "${SLIDES_PATH_NO_EXT}.png" "${OUTPUT_DIR}/${OUTPUT_NAME}.png"
-  fi
-
-  if [ "${CI}" == "true" ]; then
-    cp "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf" release_assets/
-    cp "${OUTPUT_DIR}/${OUTPUT_NAME}.png" release_assets/
-  fi
-
   rm "${SLIDES_PATH}.decktape.html"
+
+  # Move the generated PDF to a file named after the current directory, in the same output directory
+  if [ "${CI}" == "true" ]; then
+    SLIDES_OUTPUT_DIRECTORY=$(dirname "${SLIDES_PATH}")
+    SLIDES_PATH_NO_EXT="${SLIDES_PATH%.html}"
+    SLIDES_BASENAME=$(basename "${SLIDES_PATH_NO_EXT}")
+    if [ "${SLIDES_BASENAME}" = "index" ]; then
+      OUTPUT_NAME=$(basename "${SLIDES_OUTPUT_DIRECTORY}")
+      if [ "${OUTPUT_NAME}" = "${QUARTO_OUTPUT_DIRECTORY}" ]; then
+        OUTPUT_NAME=$(basename "$(pwd)")
+      fi
+      cp "${SLIDES_PATH_NO_EXT}.pdf" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.pdf"
+      cp "${SLIDES_PATH_NO_EXT}.png" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.png"
+    else
+      OUTPUT_NAME="${SLIDES_BASENAME}"
+      mv "${SLIDES_PATH_NO_EXT}.pdf" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.pdf"
+      mv "${SLIDES_PATH_NO_EXT}.png" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.png"
+    fi
+
+    cp "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.pdf" release_assets/
+    cp "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.png" release_assets/
+  fi
 done
