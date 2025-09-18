@@ -62,6 +62,9 @@ jobs:
       r: false
       python: false
       julia: false
+      gh-token: "${{ secrets.GITHUB_TOKEN }}"
+      git-user-name: "github-actions[bot]"
+      git-user-email: "41898282+github-actions[bot]@users.noreply.github.com"
 ```
 
 ### [`release-revealjs.yml`](.github/workflows/release-revealjs.yml)
@@ -102,4 +105,7 @@ jobs:
       r: false
       python: false
       julia: false
+      gh-token: "${{ secrets.GITHUB_TOKEN }}"
+      git-user-name: "github-actions[bot]"
+      git-user-email: "41898282+github-actions[bot]@users.noreply.github.com"
 ```

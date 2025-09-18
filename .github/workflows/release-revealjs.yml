@@ -23,12 +23,32 @@ on:
         required: false
         default: false
         type: boolean
+      gh-token:
+        description: "GitHub Token"
+        required: false
+        default: "${{ secrets.GITHUB_TOKEN }}"
+        type: string
+      git-user-name:
+        description: "Git user.name"
+        required: false
+        default: "github-actions[bot]"
+        type: string
+      git-user-email:
+        description: "Git user.email"
+        required: false
+        default: "41898282+github-actions[bot]@users.noreply.github.com"
+        type: string
 
 permissions:
   contents: write
   pull-requests: write
   id-token: write
   pages: write
+
+env:
+  GH_TOKEN: ${{ inputs.gh-token }} # gh cli
+  GIT_USER_NAME: ${{ inputs.git-user-name }}
+  GIT_USER_EMAIL: ${{ inputs.git-user-email }}
 
 jobs:
   bump-version:
@@ -45,13 +65,12 @@ jobs:
       - name: Bump Version
         id: bump-version
         env:
-          GH_TOKEN: ${{ secrets.github_token }} # gh cli
           BRANCH: ci/bump-version
           COMMIT: "ci: bump version for release :rocket:"
         shell: bash
         run: |
-          git config --local user.name github-actions[bot]
-          git config --local user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config --local user.name "${GIT_USER_NAME}"
+          git config --local user.email "${GIT_USER_EMAIL}"
           if git show-ref --quiet refs/heads/${BRANCH}; then
             echo "Branch ${BRANCH} already exists."
             git branch -D "${BRANCH}"
@@ -336,7 +355,6 @@ jobs:
 
       - name: Release extension on GitHub
         env:
-          GH_TOKEN: ${{ secrets.github_token }} # gh cli
           VERSION: ${{ needs.bump-version.outputs.version }}
           DATE: ${{ needs.bump-version.outputs.date }}
         shell: bash
