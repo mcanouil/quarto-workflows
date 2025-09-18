@@ -217,6 +217,7 @@ jobs:
           sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
           sparse-checkout-cone-mode: false
           path: workflows
+          ref: refactor/revealjs
 
       - name: Render Quarto Project
         id: render-quarto
