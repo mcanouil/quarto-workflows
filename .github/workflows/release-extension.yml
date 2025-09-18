@@ -448,7 +448,6 @@ jobs:
       - name: Release extension on GitHub
         env:
           GH_TOKEN: ${{ secrets.github_token }} # gh cli
-          GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
           VERSION: ${{ needs.bump-version.outputs.version }}
           RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
         shell: bash
@@ -465,10 +464,10 @@ jobs:
 
       - name: Display workflow summary
         env:
-          BUMP_SUMMARY: ${{ needs.bump-version.outputs.summary }}
-          DEPLOY_SUMMARY: ${{ needs.deploy.outputs.summary }}
           GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
           VERSION: ${{ needs.bump-version.outputs.version }}
+          BUMP_SUMMARY: ${{ needs.bump-version.outputs.summary }}
+          DEPLOY_SUMMARY: ${{ needs.deploy.outputs.summary }}
         shell: bash
         run: |
           REPO="${GITHUB_REPOSITORY}"
