@@ -59,9 +59,9 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      VERSION: ${{ steps.bump-version.outputs.VERSION }}
-      RELEASE_TITLE: ${{ steps.bump-version.outputs.RELEASE_TITLE }}
-      SUMMARY: ${{ steps.bump-version.outputs.SUMMARY }}
+      version: ${{ steps.bump-version.outputs.version }}
+      release_title: ${{ steps.bump-version.outputs.release_title }}
+      summary: ${{ steps.bump-version.outputs.summary }}
 
     steps:
       - name: Checkout repository
@@ -132,9 +132,9 @@ jobs:
           SUMMARY+="| Release Date | \`${DATE}\` |\n"
 
           {
-            echo "VERSION=${VERSION}"
-            echo "RELEASE_TITLE=${RELEASE_TITLE} ${VERSION}"
-            echo "SUMMARY=${SUMMARY}"
+            echo "version=${VERSION}"
+            echo "release_title=${RELEASE_TITLE} ${VERSION}"
+            echo "summary=${SUMMARY}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Create and Merge Pull Request
@@ -158,7 +158,7 @@ jobs:
     outputs:
       gh_pages_url: ${{ steps.deployment.outputs.page_url }}
       gh_pages_artifact: ${{ steps.upload-artifact.outputs.artifact_id }}
-      SUMMARY: ${{ steps.deployment-summary.outputs.SUMMARY }}
+      summary: ${{ steps.deployment-summary.outputs.summary }}
 
     steps:
       - name: Checkout repository
@@ -314,7 +314,7 @@ jobs:
           SUMMARY+="| Quarto Version | \`${QUARTOVERSION}\` |\n"
           SUMMARY+="| Output Formats | \`${FORMATS}\` |\n"
           SUMMARY+="| GitHub Pages URL | [${PAGE_URL}](${PAGE_URL}) |\n"
-          echo "SUMMARY=${SUMMARY}" >> "${GITHUB_OUTPUT}"
+          echo "summary=${SUMMARY}" >> "${GITHUB_OUTPUT}"
 
   title-slide-screenshot:
     runs-on: ubuntu-latest
@@ -322,7 +322,7 @@ jobs:
     needs: deploy
 
     outputs:
-      SUMMARY: ${{ steps.screenshot-summary.outputs.SUMMARY }}
+      summary: ${{ steps.screenshot-summary.outputs.summary }}
 
     steps:
       - name: Checkout repository
@@ -399,7 +399,7 @@ jobs:
             SUMMARY="## 📸 Screenshot\n\n"
             SUMMARY+="ℹ️ Skipped screenshot for non-RevealJS extension: \`${EXTENSION}\`\n"
           fi
-          echo "SUMMARY=${SUMMARY}" >> "${GITHUB_OUTPUT}"
+          echo "summary=${SUMMARY}" >> "${GITHUB_OUTPUT}"
 
   slides-to-pdf:
     runs-on: ubuntu-latest
@@ -408,10 +408,10 @@ jobs:
       - deploy
 
     outputs:
-      slides-pdf-exists: ${{ steps.convert-slides.outputs.SLIDES_PDF_EXISTS }}
-      slides-pdf: ${{ steps.convert-slides.outputs.SLIDES_PDF }}
-      slides-png: ${{ steps.convert-slides.outputs.SLIDES_PNG }}
-      SUMMARY: ${{ steps.convert-slides.outputs.SUMMARY }}
+      slides_pdf_exists: ${{ steps.convert-slides.outputs.slides_pdf_exists }}
+      slides_pdf: ${{ steps.convert-slides.outputs.slides_pdf }}
+      slides_png: ${{ steps.convert-slides.outputs.slides_png }}
+      summary: ${{ steps.convert-slides.outputs.summary }}
 
     steps:
       - name: Checkout repository
@@ -473,10 +473,12 @@ jobs:
 
             rm "${SLIDES_PATH}.decktape.html"
 
+            tar -czf gh-pages.tar.gz -C _site .
+
             {
-              echo "SLIDES_PDF_EXISTS=true"
-              echo "SLIDES_PDF=${EXTENSION}.pdf"
-              echo "SLIDES_PNG=${EXTENSION}.png"
+              echo "slides_pdf_exists=true"
+              echo "slides_pdf=${EXTENSION}.pdf"
+              echo "slides_png=${EXTENSION}.png"
             } >> "${GITHUB_OUTPUT}"
             PDF_SUMMARY="## 📄 PDF Conversion\n\n"
             PDF_SUMMARY+="✅ PDF generated for RevealJS extension: \`${EXTENSION}\`\n"
@@ -484,30 +486,30 @@ jobs:
             PDF_SUMMARY+="- Poster image created: \`${EXTENSION}.png\`\n"
           else
             {
-              echo "SLIDES_PDF_EXISTS=false"
+              echo "slides_pdf_exists=false"
             } >> "${GITHUB_OUTPUT}"
             PDF_SUMMARY="## 📄 PDF Conversion\n\n"
             PDF_SUMMARY+="ℹ️ Skipped PDF conversion for non-RevealJS extension: \`${EXTENSION}\`\n"
           fi
-          echo "SUMMARY=${PDF_SUMMARY}" >> "${GITHUB_OUTPUT}"
+          echo "summary=${PDF_SUMMARY}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload artifact (revealjs)
         uses: actions/upload-artifact@v4
-        if: ${{ steps.convert-slides.outputs.SLIDES_PDF_EXISTS == 'true' }}
+        if: ${{ steps.convert-slides.outputs.slides_pdf_exists == 'true' }}
         with:
-          name: extension-assets
+          name: release-assets
           path: |
-            ${{ steps.convert-slides.outputs.SLIDES_PDF }}
-            ${{ steps.convert-slides.outputs.SLIDES_PNG }}
-            ${{ steps.download-pages-artifact.outputs.download-path }}/_site
+            ${{ steps.convert-slides.outputs.slides_pdf }}
+            ${{ steps.convert-slides.outputs.slides_png }}
+            gh-pages.tar.gz
 
       - name: Upload artifact (default)
         uses: actions/upload-artifact@v4
-        if: ${{ steps.convert-slides.outputs.SLIDES_PDF_EXISTS == 'false' }}
+        if: ${{ steps.convert-slides.outputs.slides_pdf_exists == 'false' }}
         with:
-          name: extension-assets
+          name: release-assets
           path: |
-            ${{ steps.download-pages-artifact.outputs.download-path }}/_site
+            gh-pages.tar.gz
 
   release:
     runs-on: ubuntu-latest
@@ -519,41 +521,27 @@ jobs:
       - slides-to-pdf
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Update branch
-        run: |
-          git fetch --all
-          git checkout main
-          git pull origin main
-
       - name: Download PDF artifact
-        id: download-extension-assets-artifact
+        id: download-release-assets-artifact
         uses: actions/download-artifact@v5
         with:
-          name: extension-assets
+          name: release-assets
           path: assets
 
       - name: Release extension on GitHub
         env:
           GH_TOKEN: ${{ secrets.github_token }} # gh cli
           GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
-          VERSION: ${{ needs.bump-version.outputs.VERSION }}
-          RELEASE_TITLE: ${{ needs.bump-version.outputs.RELEASE_TITLE }}
-          SLIDES_PNG: ${{ needs.slides-to-pdf.outputs.slides-png }}
-          SLIDES_PDF: ${{ needs.slides-to-pdf.outputs.slides-pdf }}
+          VERSION: ${{ needs.bump-version.outputs.version }}
+          RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
+          SLIDES_PNG: ${{ needs.slides-to-pdf.outputs.slides_png }}
+          SLIDES_PDF: ${{ needs.slides-to-pdf.outputs.slides_pdf }}
         shell: bash
         run: |
           REPO="${GITHUB_REPOSITORY}"
           EXTENSION="${REPO#${GITHUB_REPOSITORY_OWNER}/quarto-}"
 
-          if [ -d assets/_site ]; then
-            tar -czf gh-pages.tar.gz -C assets/_site .
-          else
-            tar -czf gh-pages.tar.gz -C assets .
-          fi
-          assets=("gh-pages.tar.gz#GitHub Pages (tar.gz)")
+          assets=("assets/gh-pages.tar.gz#GitHub Pages (tar.gz)")
           if [[ "${REPO}" == *"revealjs"* ]]; then
             assets+=("assets/${SLIDES_PNG}#Poster (png)" "assets/${SLIDES_PDF}#Reveal.js Slides (pdf)")
           fi
@@ -565,12 +553,12 @@ jobs:
 
       - name: Display workflow summary
         env:
-          BUMP_SUMMARY: ${{ needs.bump-version.outputs.SUMMARY }}
-          DEPLOY_SUMMARY: ${{ needs.deploy.outputs.SUMMARY }}
-          SCREENSHOT_SUMMARY: ${{ needs.title-slide-screenshot.outputs.SUMMARY }}
-          PDF_SUMMARY: ${{ needs.slides-to-pdf.outputs.SUMMARY }}
+          BUMP_SUMMARY: ${{ needs.bump-version.outputs.summary }}
+          DEPLOY_SUMMARY: ${{ needs.deploy.outputs.summary }}
+          SCREENSHOT_SUMMARY: ${{ needs.title-slide-screenshot.outputs.summary }}
+          PDF_SUMMARY: ${{ needs.slides-to-pdf.outputs.summary }}
           GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
-          VERSION: ${{ needs.bump-version.outputs.VERSION }}
+          VERSION: ${{ needs.bump-version.outputs.version }}
         shell: bash
         run: |
           REPO="${GITHUB_REPOSITORY}"
