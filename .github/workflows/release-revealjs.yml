@@ -62,14 +62,23 @@ jobs:
           fi
           git checkout -b "${BRANCH}"
 
-          DATE=$(date +%Y-%m-%d)
-          VERSION=${DATE//-/.}
+          ORIGINAL_DATE=$(date +%Y-%m-%d)
+          ORIGINAL_VERSION=${ORIGINAL_DATE//-/.}
+          SUFFIX=1
+          DATE=${ORIGINAL_DATE}
+          VERSION=${ORIGINAL_VERSION}
+          while git tag | grep -q "^${VERSION}$"; do
+            SUFFIX=$((SUFFIX + 1))
+            VERSION="${ORIGINAL_VERSION}-${SUFFIX}"
+            DATE="${ORIGINAL_DATE} (${SUFFIX})"
+          done
           sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
           sed -i "s/^date-released:.*/date-released: \"${DATE}\"/" CITATION.cff
           {
             echo "version=${VERSION}"
             echo "date=${DATE}"
           } >> "${GITHUB_OUTPUT}"
+
           git add CITATION.cff || echo "No changes to add"
           git commit -m "${COMMIT}" || echo "No changes to commit"
           git push --force origin ${BRANCH} || echo "No changes to push"
