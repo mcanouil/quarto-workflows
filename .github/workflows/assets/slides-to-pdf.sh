@@ -73,13 +73,3 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
 
   rm "${SLIDES_PATH}.decktape.html"
 done
-
-if [ "${CI}" == "true" ]; then
-  if [ -n "${SLIDES_FILES}" ]; then
-    echo "slides_assets_exists=true" >> "${GITHUB_OUTPUT}"
-    RELEASE_ASSETS_PATH="$(pwd)/release_assets"
-    echo "release_assets_path=${RELEASE_ASSETS_PATH}" >> "${GITHUB_OUTPUT}"
-  else
-    echo "slides_assets_exists=false" >> "${GITHUB_OUTPUT}"
-  fi
-fi
