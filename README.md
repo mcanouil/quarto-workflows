@@ -9,7 +9,9 @@ GitHub Actions workflows for Quarto projects.
 
 ### [`release-extension.yml`](.github/workflows/release-extension.yml)
 
-A comprehensive reusable workflow for releasing Quarto extensions with automatic versioning, multi-format rendering, and GitHub Pages deployment. Key features include:
+A comprehensive reusable workflow for releasing Quarto extensions with automatic versioning, multi-format rendering, and GitHub Pages deployment.
+
+Key features include:
 
 - **Version Management**: Automatic semantic versioning (major/minor/patch) with manifest updates.
 - **Multi-language Support**: Optional R, Python, and Julia environments with dependency management.
@@ -64,7 +66,9 @@ jobs:
 
 ### [`release-revealjs.yml`](.github/workflows/release-revealjs.yml)
 
-A streamlined workflow specifically designed for building and deploying Reveal.js presentations with Quarto. Key features include:
+A streamlined workflow specifically designed for building and deploying Reveal.js presentations with Quarto.
+
+Key features include:
 
 - **Version Management**: Date-based versioning with automatic suffix handling for multiple releases.
 - **Multi-language Support**: Optional R, Python, and Julia environments with dependency management.
