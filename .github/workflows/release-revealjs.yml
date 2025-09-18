@@ -213,7 +213,7 @@ jobs:
           julia --project=. -e 'using Pkg; Pkg.add(["IJulia"])'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
 
       - name: Install Quarto
         uses: quarto-dev/quarto-actions/setup@v2
