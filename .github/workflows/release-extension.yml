@@ -444,7 +444,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           name: release-assets
-          path: assets
+          path: release_assets
 
       - name: Release extension on GitHub
         env:
@@ -456,7 +456,7 @@ jobs:
           assets=()
           while IFS= read -r -d '' file; do
             assets+=("${file}")
-          done < <(find assets -type f -print0)
+          done < <(find release_assets -type f -print0)
 
           gh release create "${VERSION}" \
             --title "${RELEASE_TITLE}" \
