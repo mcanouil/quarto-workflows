@@ -26,6 +26,7 @@ on:
 
 env:
   GH_TOKEN: ${{ secrets.github_token }} # gh cli
+  OUTPUT_DIRECTORY: _site
   BRANCH: ci/bump-version
   COMMIT: "ci: bump version for release :rocket:"
   QUARTOVERSION: ${{ inputs.quarto }}
@@ -231,7 +232,7 @@ jobs:
             # Create new _quarto.yml if it doesn't exist
             {
               echo "project:"
-              echo "  output-dir: _site"
+              echo "  output-dir: ${OUTPUT_DIRECTORY}"
               echo "  post-render:"
               echo "    - ${SLIDES_SCRIPT}"
             } > _quarto.yml
@@ -239,7 +240,7 @@ jobs:
             # Update existing _quarto.yml
             echo "Existing _quarto.yml found, merging configuration..."
             # Set output-dir (always overwrite)
-            yq eval '.project.output-dir = "_site"' -i _quarto.yml
+            yq eval '.project.output-dir = "${OUTPUT_DIRECTORY}"' -i _quarto.yml
             # Handle post-render array merging
             if yq eval '.project.post-render' _quarto.yml | grep -q "null"; then
               # No post-render exists, create it
@@ -259,7 +260,7 @@ jobs:
 
           quarto render
 
-          tar -czf gh-pages.tar.gz -C _site .
+          tar -czf gh-pages.tar.gz -C "${OUTPUT_DIRECTORY}" .
 
           if [ -d "release_assets" ]; then
             echo "slides_assets_exists=true" >> "${GITHUB_OUTPUT}"
@@ -276,7 +277,7 @@ jobs:
         id: upload-artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "_site"
+          path: "${{ env.OUTPUT_DIRECTORY }}"
 
       - name: Deploy to GitHub Pages
         id: deployment
