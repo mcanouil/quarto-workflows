@@ -261,6 +261,14 @@ jobs:
 
           tar -czf gh-pages.tar.gz -C _site .
 
+          if [ -d "release_assets" ]; then
+            echo "slides_assets_exists=true" >> "${GITHUB_OUTPUT}"
+            RELEASE_ASSETS_PATH="$(pwd)/release_assets"
+            echo "release_assets_path=${RELEASE_ASSETS_PATH}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "slides_assets_exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
