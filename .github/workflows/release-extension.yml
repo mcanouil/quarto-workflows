@@ -3,7 +3,7 @@ name: Release Quarto Extension
 on:
   workflow_call:
     secrets:
-      GITHUB_TOKEN:
+      GH_TOKEN:
         description: "GitHub token"
         required: false
       APP_KEY:
