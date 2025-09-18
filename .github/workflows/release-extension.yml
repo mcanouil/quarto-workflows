@@ -46,10 +46,6 @@ on:
         description: "GitHub App ID"
         required: false
         type: string
-      gh-app-key:
-        description: "GitHub App Private Key"
-        required: false
-        type: string
 
 permissions:
   contents: write
