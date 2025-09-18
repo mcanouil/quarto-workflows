@@ -39,16 +39,6 @@ on:
         default: false
         type: boolean
 
-env:
-  GH_TOKEN: ${{ secrets.github_token }} # gh cli
-  OUTPUT_DIRECTORY: _site
-  BRANCH: ci/bump-version
-  COMMIT: "ci: bump version for release :rocket:"
-  BUMPVERSION: ${{ inputs.version }}
-  FORMATS: ${{ inputs.formats }}
-  QUARTOVERSION: ${{ inputs.quarto }}
-  TINYTEX: ${{ inputs.tinytex }}
-
 permissions:
   contents: write
   pull-requests: write
@@ -58,6 +48,12 @@ permissions:
 jobs:
   bump-version:
     runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ secrets.github_token }} # gh cli
+      BRANCH: ci/bump-version
+      COMMIT: "ci: bump version for release :rocket:"
+      BUMP_VERSION: ${{ inputs.version }}
 
     outputs:
       version: ${{ steps.bump-version.outputs.version }}
@@ -94,8 +90,8 @@ jobs:
           MAJOR=$(echo ${CURRENT_VERSION} | cut -d. -f1)
           MINOR=$(echo ${CURRENT_VERSION} | cut -d. -f2)
           PATCH=$(echo ${CURRENT_VERSION} | cut -d. -f3)
-          echo "Bumping Version: ${BUMPVERSION}"
-          case "${BUMPVERSION}" in
+          echo "Bumping Version: ${BUMP_VERSION}"
+          case "${BUMP_VERSION}" in
             "major")
               MAJOR=$((MAJOR + 1))
               MINOR=0
@@ -135,7 +131,7 @@ jobs:
           SUMMARY+="| Extension | \`${EXTENSION}\` |\n"
           SUMMARY+="| Previous Version | \`${CURRENT_VERSION}\` |\n"
           SUMMARY+="| New Version | \`${VERSION}\` |\n"
-          SUMMARY+="| Bump Type | \`${BUMPVERSION}\` |\n"
+          SUMMARY+="| Bump Type | \`${BUMP_VERSION}\` |\n"
           SUMMARY+="| Release Date | \`${DATE}\` |\n"
 
           {
@@ -152,6 +148,12 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
+    env:
+      OUTPUT_DIRECTORY: _site
+      FORMATS: ${{ inputs.formats }}
+      QUARTOVERSION: ${{ inputs.quarto }}
+      TINYTEX: ${{ inputs.tinytex }}
 
     outputs:
       gh_pages_url: ${{ steps.deployment.outputs.page_url }}
