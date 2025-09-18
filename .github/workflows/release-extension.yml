@@ -42,15 +42,9 @@ on:
         description: "GitHub Token"
         required: false
         type: string
-      git-user-name:
-        description: "Git user.name"
+      gh-app-id:
+        description: "GitHub App ID"
         required: false
-        default: "github-actions[bot]"
-        type: string
-      git-user-email:
-        description: "Git user.email"
-        required: false
-        default: "41898282+github-actions[bot]@users.noreply.github.com"
         type: string
 
 permissions:
@@ -61,8 +55,6 @@ permissions:
 
 env:
   GH_TOKEN: ${{ inputs.gh-token || secrets.GITHUB_TOKEN }} # gh cli
-  GIT_USER_NAME: ${{ inputs.git-user-name }}
-  GIT_USER_EMAIL: ${{ inputs.git-user-email }}
 
 jobs:
   bump-version:
@@ -180,6 +172,38 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Create GitHub App token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        if: ${{ inputs.gh-app-id != '' && secrets.APP_KEY != '' }}
+        with:
+          app-id: ${{ inputs.gh-app-id }}
+          private-key: ${{ secrets.APP_KEY }}
+
+      - name: Get GitHub App User ID
+        id: get-user-id
+        if: ${{ steps.app-token.outputs.app-slug != '' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          echo "user-id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure Environment for Git User
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          USER_ID: ${{ steps.get-user-id.outputs.user-id }}
+        run: |
+          if [ -z "${APP_SLUG}" ]; then
+            USER_NAME="github-actions[bot]"
+            USER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          else
+            USER_NAME="${APP_SLUG}[bot]"
+            USER_EMAIL="${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+          fi
+          echo "GIT_USER_NAME=${APP_SLUG}" >> "${GITHUB_ENV}"
+          echo "GIT_USER_EMAIL=${APP_SLUG}" >> "${GITHUB_ENV}"
 
       - name: Update branch
         run: |
@@ -447,6 +471,38 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Create GitHub App token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        if: ${{ inputs.gh-app-id != '' && secrets.APP_KEY != '' }}
+        with:
+          app-id: ${{ inputs.gh-app-id }}
+          private-key: ${{ secrets.APP_KEY }}
+
+      - name: Get GitHub App User ID
+        id: get-user-id
+        if: ${{ steps.app-token.outputs.app-slug != '' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          echo "user-id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure Environment for Git User
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          USER_ID: ${{ steps.get-user-id.outputs.user-id }}
+        run: |
+          if [ -z "${APP_SLUG}" ]; then
+            USER_NAME="github-actions[bot]"
+            USER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+          else
+            USER_NAME="${APP_SLUG}[bot]"
+            USER_EMAIL="${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+          fi
+          echo "GIT_USER_NAME=${APP_SLUG}" >> "${GITHUB_ENV}"
+          echo "GIT_USER_EMAIL=${APP_SLUG}" >> "${GITHUB_ENV}"
 
       - name: Update branch
         run: |
