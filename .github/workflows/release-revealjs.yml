@@ -8,9 +8,25 @@ on:
         required: true
         default: "release"
         type: string
+      r:
+        description: "Install R"
+        required: false
+        default: false
+        type: boolean
+      python:
+        description: "Install Python"
+        required: false
+        default: false
+        type: boolean
+      julia:
+        description: "Install Julia"
+        required: false
+        default: false
+        type: boolean
 
 env:
   GH_TOKEN: ${{ secrets.github_token }} # gh cli
+  OUTPUT_DIRECTORY: _site
   BRANCH: ci/bump-version
   COMMIT: "ci: bump version for release :rocket:"
   QUARTOVERSION: ${{ inputs.quarto }}
@@ -31,7 +47,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          fetch-tags: true
 
       - name: Bump Version
         id: bump-version
@@ -46,27 +64,35 @@ jobs:
           fi
           git checkout -b "${BRANCH}"
 
-          DATE=$(date +%Y-%m-%d)
-          VERSION=${DATE//-/.}
-          sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
+          ORIGINAL_DATE=$(date +%Y-%m-%d)
+          ORIGINAL_VERSION=${ORIGINAL_DATE//-/.}
+          SUFFIX=1
+          DATE="${ORIGINAL_DATE}"
           sed -i "s/^date-released:.*/date-released: \"${DATE}\"/" CITATION.cff
+          VERSION="${ORIGINAL_VERSION}"
+          while git tag | grep -q "^${VERSION}$"; do
+            SUFFIX=$((SUFFIX + 1))
+            VERSION="${ORIGINAL_VERSION}-${SUFFIX}"
+            DATE="${ORIGINAL_DATE} (${SUFFIX})"
+          done
+          echo "Final version to be used: ${VERSION}"
+          echo "Final date to be used: ${DATE}"
+          sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
+
+          git add CITATION.cff || echo "No changes to add"
+          git commit -m "${COMMIT}" || echo "No changes to commit"
+          git push --force origin ${BRANCH} || echo "No changes to push"
+          sleep 5
+          gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
+          sleep 5
+          gh pr merge --auto --squash --delete-branch
+          sleep 5
+
           {
             echo "version=${VERSION}"
             echo "date=${DATE}"
           } >> "${GITHUB_OUTPUT}"
-          git add CITATION.cff || echo "No changes to add"
-          git commit -m "${COMMIT}" || echo "No changes to commit"
-          git push --force origin ${BRANCH} || echo "No changes to push"
 
-      - name: Create and Merge Pull Request
-        shell: bash
-        run: |
-          sleep 5
-          gh pr create --fill-first --base "main" --head "${BRANCH}" --label "Type: CI/CD :robot:"
-          sleep 5
-          gh pr merge --auto --squash --delete-branch
-          sleep 5
-  
   deploy:
     runs-on: ubuntu-latest
 
@@ -76,11 +102,115 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
+    outputs:
+      gh_pages_url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Update branch
+        run: |
+          git fetch --all
+          git checkout "${GITHUB_REF_NAME}"
+          git pull origin "${GITHUB_REF_NAME}"
+
+      - name: Check R environment
+        id: check-r-env
+        env:
+          R: ${{ inputs.r }}
+        run: |
+          if [ "${R}" = "true" ] && [ -f "renv.lock" ]; then
+            echo "renv=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "renv=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Set up R
+        if: ${{ inputs.r == 'true' }}
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install renv
+        if: ${{ inputs.r == 'true' && steps.check-r-env.outputs.renv == 'true' }}
+        uses: r-lib/actions/setup-renv@v2
+
+      - name: Install R dependencies
+        if: ${{ inputs.r == 'true' }}
+        env:
+          RENV: ${{ steps.check-r-env.outputs.renv == 'true' }}
+        shell: bash
+        run: |
+          if [ "${RENV}" = "true" ]; then
+            Rscript -e 'renv::restore()'
+          else
+            Rscript -e 'install.packages(c("knitr", "rmarkdown"))'
+          fi
+
+      - name: Check Python environment
+        id: check-python-env
+        env:
+          PYTHON: ${{ inputs.python }}
+        run: |
+          if [ "${PYTHON}" = "true" ] && [ -f "pyproject.toml" ]; then
+            echo "python=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "python=false" >> "${GITHUB_OUTPUT}"
+          fi
+          if [ "${PYTHON}" = "true" ] && [ -f "uv.lock" ]; then
+            echo "uv=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "uv=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install uv
+        if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.uv == 'true' }}
+        uses: astral-sh/setup-uv@v6
         with:
-          fetch-depth: 0
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install uv
+        if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.uv == 'false' }}
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.python == 'true' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Set up Python
+        if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.python == 'false' }}
+        uses: actions/setup-python@v5
+
+      - name: Install Python dependencies
+        if: ${{ inputs.python == 'true' }}
+        env:
+          UV: ${{ steps.check-python-env.outputs.uv == 'true' }}
+        shell: bash
+        run: |
+          if [ "${UV}" = "true" ]; then
+            uv sync
+          else
+            uv init --no-package --vcs none --bare --no-readme --author-from none
+            uv venv
+            source .venv/bin/activate
+            uv add jupyter papermill
+            uv sync
+          fi
+
+      - name: Set up Julia
+        if: ${{ inputs.julia == 'true' }}
+        uses: julia-actions/setup-julia@v2
+
+      - name: Install Julia dependencies
+        if: ${{ inputs.julia == 'true' }}
+        shell: bash
+        run: |
+          julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+          julia --project=. -e 'using Pkg; Pkg.add(["IJulia"])'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -92,50 +222,147 @@ jobs:
           tinytex: false
 
       - name: Checkout repository with sparse checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: mcanouil/quarto-workflows
           sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
           sparse-checkout-cone-mode: false
           path: workflows
+          ref: refactor/revealjs
 
       - name: Render Quarto Project
+        id: render-quarto
         shell: bash
         run: |
           npm install -g decktape
-          echo -e "project:\n  output-dir: _site\n  post-render:\n    - workflows/.github/workflows/assets/slides-to-pdf.sh" > _quarto.yml
+
+          # Create or update _quarto.yml with intelligent merging
+          SLIDES_SCRIPT="workflows/.github/workflows/assets/slides-to-pdf.sh"
+          if [ ! -f "_quarto.yml" ]; then
+            # Create new _quarto.yml if it doesn't exist
+            {
+              echo "project:"
+              echo "  output-dir: ${OUTPUT_DIRECTORY}"
+              echo "  post-render:"
+              echo "    - ${SLIDES_SCRIPT}"
+            } > _quarto.yml
+          else
+            # Update existing _quarto.yml
+            echo "Existing _quarto.yml found, merging configuration..."
+            # Set output-dir (always overwrite)
+            yq eval '.project.output-dir = "${OUTPUT_DIRECTORY}"' -i _quarto.yml
+            # Handle post-render array merging
+            if yq eval '.project.post-render' _quarto.yml | grep -q "null"; then
+              # No post-render exists, create it
+              yq eval '.project.post-render = ["'${SLIDES_SCRIPT}'"]' -i _quarto.yml
+            else
+              # Check if our script is already in the post-render list
+              if ! yq eval '.project.post-render[] | select(. == "'${SLIDES_SCRIPT}'")' _quarto.yml | grep -q "${SLIDES_SCRIPT}"; then
+                # Add our script to the existing post-render list
+                yq eval '.project.post-render += ["'${SLIDES_SCRIPT}'"]' -i _quarto.yml
+              else
+                echo "Script already exists in post-render list, skipping..."
+              fi
+            fi
+          fi
+          echo "Updated _quarto.yml:"
+          cat _quarto.yml
+
           quarto render
+
+          tar -czf gh-pages.tar.gz -C "${OUTPUT_DIRECTORY}" .
+
+          if [ -d "release_assets" ]; then
+            echo "slides_assets_exists=true" >> "${GITHUB_OUTPUT}"
+            RELEASE_ASSETS_PATH="$(pwd)/release_assets"
+            echo "release_assets_path=${RELEASE_ASSETS_PATH}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "slides_assets_exists=false" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
+        id: upload-artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "_site"
+          path: "${{ env.OUTPUT_DIRECTORY }}"
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
 
+      - name: Upload artifact (revealjs)
+        uses: actions/upload-artifact@v4
+        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
+        with:
+          name: release-assets
+          path: |
+            ${{ steps.render-quarto.outputs.release_assets_path }}
+            gh-pages.tar.gz
+
+      - name: Upload artifact (default)
+        uses: actions/upload-artifact@v4
+        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'false' }}
+        with:
+          name: release-assets
+          path: |
+            gh-pages.tar.gz
+
   release:
     runs-on: ubuntu-latest
 
-    needs: deploy
+    needs:
+      - bump-version
+      - deploy
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Update branch
         run: |
           git fetch --all
-          git checkout main
-          git pull origin main
+          git checkout ${GITHUB_REF_NAME}
+          git pull origin ${GITHUB_REF_NAME}
+
+      - name: Download PDF artifact
+        id: download-release-assets-artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: release-assets
+          path: release_assets
 
       - name: Release extension on GitHub
+        env:
+          GH_TOKEN: ${{ secrets.github_token }} # gh cli
+          VERSION: ${{ needs.bump-version.outputs.version }}
+          DATE: ${{ needs.bump-version.outputs.date }}
         shell: bash
         run: |
-          VERSION=$(grep "^version:" "CITATION.cff" | sed 's/version: //;s/"//g')
-          DATE=$(grep "^date-released:" "CITATION.cff" | sed 's/date-released: //;s/"//g')
-          gh release create ${VERSION} --title "${DATE}" --generate-notes
+          assets=()
+          while IFS= read -r -d '' file; do
+            assets+=("${file}")
+          done < <(find release_assets -type f -print0)
+
+          gh release create "${VERSION}" \
+            --title "${DATE}" \
+            --generate-notes \
+            "${assets[@]}"
+
+      - name: Display workflow summary
+        env:
+          GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
+          VERSION: ${{ needs.bump-version.outputs.version }}
+        shell: bash
+        run: |
+          {
+            echo "# 🎉 Release Summary"
+            echo ""
+            echo "🤖 *Automated release completed successfully*"
+            echo ""
+            echo "- [📦 GitHub Release](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${VERSION})"
+            echo "- [🌐 Live Website](${GH_PAGES_URL})"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
