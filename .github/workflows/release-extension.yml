@@ -103,8 +103,8 @@ jobs:
             USER_NAME="${APP_SLUG}[bot]"
             USER_EMAIL="${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
           fi
-          echo "GIT_USER_NAME=${APP_SLUG}" >> "${GITHUB_ENV}"
-          echo "GIT_USER_EMAIL=${APP_SLUG}" >> "${GITHUB_ENV}"
+          git config --global user.name "${USER_NAME}"
+          git config --global user.email "${USER_EMAIL}"
 
       - name: Bump Version
         id: bump-version
@@ -112,9 +112,6 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }} # gh cli
         shell: bash
         run: |
-          git config --local user.name "${GIT_USER_NAME}"
-          git config --local user.email "${GIT_USER_EMAIL}"
-
           if git show-ref --quiet refs/heads/${BRANCH}; then
             echo "Branch ${BRANCH} already exists."
             git branch -D "${BRANCH}"
@@ -236,8 +233,8 @@ jobs:
             USER_NAME="${APP_SLUG}[bot]"
             USER_EMAIL="${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
           fi
-          echo "GIT_USER_NAME=${APP_SLUG}" >> "${GITHUB_ENV}"
-          echo "GIT_USER_EMAIL=${APP_SLUG}" >> "${GITHUB_ENV}"
+          git config --global user.name "${USER_NAME}"
+          git config --global user.email "${USER_EMAIL}"
 
       - name: Update branch
         run: |
@@ -458,9 +455,6 @@ jobs:
           COMMIT: "ci: update thumbs :art:"
         shell: bash
         run: |
-          git config --local user.name "${GIT_USER_NAME}"
-          git config --local user.email "${GIT_USER_EMAIL}"
-
           if [ -f "${OUTPUT_DIRECTORY}/index.png" ]; then
             mv -f "${OUTPUT_DIRECTORY}/index.png" .github/template.png
             if git show-ref --quiet refs/heads/${BRANCH}; then
@@ -536,8 +530,8 @@ jobs:
             USER_NAME="${APP_SLUG}[bot]"
             USER_EMAIL="${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
           fi
-          echo "GIT_USER_NAME=${APP_SLUG}" >> "${GITHUB_ENV}"
-          echo "GIT_USER_EMAIL=${APP_SLUG}" >> "${GITHUB_ENV}"
+          git config --global user.name "${USER_NAME}"
+          git config --global user.email "${USER_EMAIL}"
 
       - name: Update branch
         run: |
