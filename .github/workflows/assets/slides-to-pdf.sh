@@ -52,17 +52,17 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
     "${SLIDES_PATH}.decktape.html" "${SLIDES_PATH%.html}.pdf"
 
   # Move the generated PDF to a file named after the current directory, in the same output directory
+  OUTPUT_DIR=$(dirname "${SLIDES_PATH}")
   SLIDES_PATH_NO_EXT="${SLIDES_PATH%.html}"
-  OUTPUT_DIR=$(dirname "${SLIDES_PATH_NO_EXT}.pdf")
   SLIDES_BASENAME=$(basename "${SLIDES_PATH_NO_EXT}")
   if [ "${SLIDES_BASENAME}" = "index" ]; then
-    mv "${SLIDES_PATH_NO_EXT}.pdf" "${OUTPUT_DIR}/${SLIDES_PATH_NO_EXT}.pdf"
-    mv "${SLIDES_PATH_NO_EXT}.png" "${OUTPUT_DIR}/${SLIDES_PATH_NO_EXT}.png"
+    mv "${SLIDES_PATH_NO_EXT}.pdf" "${OUTPUT_DIR}/${SLIDES_BASENAME}.pdf"
+    mv "${SLIDES_PATH_NO_EXT}.png" "${OUTPUT_DIR}/${SLIDES_BASENAME}.png"
     OUTPUT_NAME=$(basename "$(pwd)")
     mv "${SLIDES_PATH_NO_EXT}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf"
     mv "${SLIDES_PATH_NO_EXT}.png" "${OUTPUT_DIR}/${OUTPUT_NAME}.png"
   else
-    OUTPUT_NAME="${SLIDES_PATH_NO_EXT}"
+    OUTPUT_NAME="${SLIDES_BASENAME}"
     mv "${SLIDES_PATH_NO_EXT}.pdf" "${OUTPUT_DIR}/${OUTPUT_NAME}.pdf"
     mv "${SLIDES_PATH_NO_EXT}.png" "${OUTPUT_DIR}/${OUTPUT_NAME}.png"
   fi
