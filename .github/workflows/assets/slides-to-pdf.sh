@@ -39,7 +39,7 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
   npx -y decktape reveal \
     --chrome-arg="--no-sandbox" \
     --chrome-arg="--disable-setuid-sandbox" \
-    --size "1920x1080" \
+    --size "1280x640" \
     --screenshots \
     --screenshots-format png \
     --screenshots-directory . \
@@ -47,7 +47,7 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
     "${SLIDES_PATH}.decktape.html" index.pdf
 
   rm index.pdf
-  mv index_1_1920x1080.png "${SLIDES_PATH%.html}.png"
+  mv index_1_1280x640.png "${SLIDES_PATH%.html}.png"
 
   npx -y decktape reveal \
     --chrome-arg="--no-sandbox" \
