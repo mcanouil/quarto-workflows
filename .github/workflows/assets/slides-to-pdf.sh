@@ -6,14 +6,18 @@ set -e
 #   exit 0
 # fi
 
-QUARTO_OUTPUT_DIRECTORY=${OUTPUT_DIRECTORY:-"_site"}
-
 # CHROME_PATH_ARG=""
 # if [ -n "${QUARTO_CHROMIUM}" ]; then
 #   CHROME_PATH_ARG="--chrome-path=${QUARTO_CHROMIUM}"
 # fi
 
-HTML_FILES=$(echo "${QUARTO_PROJECT_OUTPUT_FILES}" | tr ' ' '\n' | grep -E '\.html$')
+QUARTO_OUTPUT_DIRECTORY=${OUTPUT_DIRECTORY:-"_site"}
+
+HTML_FILES=$(echo "${QUARTO_PROJECT_OUTPUT_FILES}" | tr ' ' '\n' | grep -E '\.html$' || true)
+
+if [ -z "${HTML_FILES}" ]; then
+  exit 0
+fi
 
 SLIDES_FILES=""
 for HTML_FILE in ${HTML_FILES}; do
