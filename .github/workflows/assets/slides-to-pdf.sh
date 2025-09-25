@@ -46,8 +46,8 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
     --slides 1 \
     "${SLIDES_PATH}.decktape.html" index.pdf
 
-  rm index.pdf
-  mv index_1_1280x640.png "${SLIDES_PATH%.html}.png"
+  rm -f index.pdf
+  mv -f index_1_1280x640.png "${SLIDES_PATH%.html}.png"
 
   npx -y decktape reveal \
     --chrome-arg="--no-sandbox" \
@@ -60,7 +60,7 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
     --pdf-title "${PDF_TITLE}" \
     "${SLIDES_PATH}.decktape.html" "${SLIDES_PATH%.html}.pdf"
 
-  rm "${SLIDES_PATH}.decktape.html"
+  rm -f "${SLIDES_PATH}.decktape.html"
 
   # Move the generated PDF to a file named after the current directory, in the same output directory
   if [ "${CI}" == "true" ]; then
@@ -72,15 +72,19 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
       if [ "${OUTPUT_NAME}" = "${QUARTO_OUTPUT_DIRECTORY}" ]; then
         OUTPUT_NAME=$(basename "$(pwd)")
       fi
-      cp "${SLIDES_PATH_NO_EXT}.pdf" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.pdf"
-      cp "${SLIDES_PATH_NO_EXT}.png" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.png"
+      if [ "${SLIDES_PATH_NO_EXT}" != "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}" ]; then
+        cp -f "${SLIDES_PATH_NO_EXT}.pdf" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.pdf"
+        cp -f "${SLIDES_PATH_NO_EXT}.png" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.png"
+      fi
     else
       OUTPUT_NAME="${SLIDES_BASENAME}"
-      mv "${SLIDES_PATH_NO_EXT}.pdf" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.pdf"
-      mv "${SLIDES_PATH_NO_EXT}.png" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.png"
+      if [ "${SLIDES_PATH_NO_EXT}" != "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}" ]; then
+        mv -f "${SLIDES_PATH_NO_EXT}.pdf" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.pdf"
+        mv -f "${SLIDES_PATH_NO_EXT}.png" "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.png"
+      fi
     fi
 
-    cp "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.pdf" release_assets/
-    cp "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.png" release_assets/
+    cp -f "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.pdf" release_assets/
+    cp -f "${SLIDES_OUTPUT_DIRECTORY}/${OUTPUT_NAME}.png" release_assets/
   fi
 done
