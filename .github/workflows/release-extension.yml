@@ -327,6 +327,7 @@ jobs:
             uv add jupyter papermill
             uv sync
           fi
+          source .venv/bin/activate
 
       - name: Set up Julia
         if: ${{ inputs.julia }}
