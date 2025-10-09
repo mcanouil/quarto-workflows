@@ -327,7 +327,6 @@ jobs:
             uv add jupyter papermill
             uv sync
           fi
-          source .venv/bin/activate
 
       - name: Set up Julia
         if: ${{ inputs.julia }}
@@ -366,8 +365,13 @@ jobs:
 
       - name: Render Quarto Project
         id: render-quarto
+        env:
+          PYTHON: ${{ inputs.python }}
         shell: bash
         run: |
+          if [ "${PYTHON}" = "true" ]; then
+            source .venv/bin/activate
+          fi
           npm install -g decktape
 
           # Create or update _quarto.yml with intelligent merging
