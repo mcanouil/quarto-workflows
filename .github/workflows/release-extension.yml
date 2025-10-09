@@ -278,16 +278,22 @@ jobs:
         env:
           PYTHON: ${{ inputs.python }}
         run: |
+          echo "PYTHON=${PYTHON}"
           if [ "${PYTHON}" = "true" ] && [ -f "pyproject.toml" ]; then
             echo "python=true" >> "${GITHUB_OUTPUT}"
+            echo "python=true"
           else
             echo "python=false" >> "${GITHUB_OUTPUT}"
+            echo "python=false"
           fi
           if [ "${PYTHON}" = "true" ] && [ -f "uv.lock" ]; then
             echo "uv=true" >> "${GITHUB_OUTPUT}"
+            echo "uv=true"
           else
             echo "uv=false" >> "${GITHUB_OUTPUT}"
+            echo "uv=false"
           fi
+          
 
       - name: Install uv
         if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.uv == 'true' }}
