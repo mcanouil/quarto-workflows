@@ -258,13 +258,13 @@ jobs:
         uses: r-lib/actions/setup-r@v2
 
       - name: Install renv
-        if: ${{ inputs.r == 'true' && steps.check-r-env.outputs.renv == 'true' }}
+        if: ${{ inputs.r == 'true' && contains(steps.check-r-env.outputs.renv, 'true') }}
         uses: r-lib/actions/setup-renv@v2
 
       - name: Install R dependencies
         if: ${{ inputs.r == 'true' }}
         env:
-          RENV: ${{ steps.check-r-env.outputs.renv == 'true' }}
+          RENV: ${{ steps.check-r-env.outputs.renv }}
         shell: bash
         run: |
           if [ "${RENV}" = "true" ]; then
@@ -278,50 +278,44 @@ jobs:
         env:
           PYTHON: ${{ inputs.python }}
         run: |
-          echo "PYTHON=${PYTHON}"
           if [ "${PYTHON}" = "true" ] && [ -f "pyproject.toml" ]; then
             echo "python=true" >> "${GITHUB_OUTPUT}"
-            echo "python=true"
           else
             echo "python=false" >> "${GITHUB_OUTPUT}"
-            echo "python=false"
           fi
           if [ "${PYTHON}" = "true" ] && [ -f "uv.lock" ]; then
             echo "uv=true" >> "${GITHUB_OUTPUT}"
-            echo "uv=true"
           else
             echo "uv=false" >> "${GITHUB_OUTPUT}"
-            echo "uv=false"
           fi
-          
 
       - name: Install uv
-        if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.uv == 'true' }}
+        if: ${{ inputs.python == 'true' && contains(steps.check-python-env.outputs.uv, 'true') }}
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
       - name: Install uv
-        if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.uv == 'false' }}
+        if: ${{ inputs.python == 'true' && contains(steps.check-python-env.outputs.uv, 'false') }}
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
 
       - name: Set up Python
-        if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.python == 'true' }}
+        if: ${{ inputs.python == 'true' && contains(steps.check-python-env.outputs.python, 'true') }}
         uses: actions/setup-python@v6
         with:
           python-version-file: "pyproject.toml"
 
       - name: Set up Python
-        if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.python == 'false' }}
+        if: ${{ inputs.python == 'true' && contains(steps.check-python-env.outputs.python, 'false') }}
         uses: actions/setup-python@v6
 
       - name: Install Python dependencies
         if: ${{ inputs.python == 'true' }}
         env:
-          UV: ${{ steps.check-python-env.outputs.uv == 'true' }}
+          UV: ${{ steps.check-python-env.outputs.uv }}
         shell: bash
         run: |
           if [ "${UV}" = "true" ]; then
@@ -437,7 +431,7 @@ jobs:
 
       - name: Upload artifact (revealjs)
         uses: actions/upload-artifact@v4
-        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
+        if: ${{ contains(steps.render-quarto.outputs.slides_assets_exists, 'true') }}
         with:
           name: release-assets
           path: |
@@ -446,14 +440,14 @@ jobs:
 
       - name: Upload artifact (default)
         uses: actions/upload-artifact@v4
-        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'false' }}
+        if: ${{ contains(steps.render-quarto.outputs.slides_assets_exists, 'false') }}
         with:
           name: release-assets
           path: |
             gh-pages.tar.gz
 
       - name: Update template thumbnail
-        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
+        if: ${{ contains(steps.render-quarto.outputs.slides_assets_exists, 'true') }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }} # gh cli
           RELEASE_ASSETS_PATH: ${{ steps.render-quarto.outputs.release_assets_path }}
