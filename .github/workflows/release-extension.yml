@@ -367,6 +367,7 @@ jobs:
         id: render-quarto
         env:
           PYTHON: ${{ inputs.python }}
+          ACTIONS_STEP_DEBUG: ${{ vars.ACTIONS_STEP_DEBUG }}
         shell: bash
         run: |
           if [ "${PYTHON}" = "true" ]; then
@@ -412,6 +413,8 @@ jobs:
             export QUARTO_DENO_V8_OPTIONS=--stack-trace-limit=100 # debug
             export QUARTO_PRINT_STACK=true # debug
             export QUARTO_LOG_LEVEL=DEBUG # debug
+            ulimit -Sn $(ulimit -Hn) # debug
+            echo "::debug::Increased stack size to $(ulimit -s)" # debug
           fi
           for format in ${FORMATS}; do
             quarto render --to ${format}
