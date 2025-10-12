@@ -407,7 +407,7 @@ jobs:
           cat _quarto.yml
 
           # Render to all formats via for loop to avoid LaTeX error "pdf/beamer" formats
-          if [ "${ACTIONS_RUNNER_DEBUG}" = "true" ]; then
+          if [ "${ACTIONS_RUNNER_DEBUG}" = "true" ] || [ "${ACTIONS_STEP_DEBUG}" = "true" ]; then
             echo "$(getconf ARG_MAX)" # debug
             export QUARTO_DENO_V8_OPTIONS=--stack-trace-limit=100 # debug
             export QUARTO_PRINT_STACK=true # debug
