@@ -307,6 +307,8 @@ jobs:
         id: render-quarto
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }} # gh cli
+          ACTIONS_STEP_DEBUG: ${{ vars.ACTIONS_STEP_DEBUG }}
+          ACTIONS_RUNNER_DEBUG: ${{ vars.ACTIONS_RUNNER_DEBUG }}
         shell: bash
         run: |
           npm install -g decktape
@@ -343,6 +345,11 @@ jobs:
           echo "Updated _quarto.yml:"
           cat _quarto.yml
 
+          if [ "${ACTIONS_RUNNER_DEBUG}" = "true" ] || [ "${ACTIONS_STEP_DEBUG}" = "true" ]; then
+            export QUARTO_DENO_V8_OPTIONS=--stack-trace-limit=100 # debug
+            export QUARTO_PRINT_STACK=true # debug
+            export QUARTO_LOG_LEVEL=DEBUG # debug
+          fi
           quarto render
 
           tar -czf gh-pages.tar.gz -C "${OUTPUT_DIRECTORY}" .
