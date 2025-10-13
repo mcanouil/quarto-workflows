@@ -238,14 +238,14 @@ jobs:
 
       - name: Install uv
         if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.uv == 'true' }}
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
       - name: Install uv
         if: ${{ inputs.python == 'true' && steps.check-python-env.outputs.uv == 'false' }}
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
