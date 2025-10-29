@@ -394,12 +394,12 @@ jobs:
             # Handle post-render array merging
             if yq eval '.project.post-render' _quarto.yml | grep -q "null"; then
               # No post-render exists, create it
-              yq eval '.project.post-render = ["'${SLIDES_SCRIPT}'"]' -i _quarto.yml
+              yq eval ".project.post-render = [\"${SLIDES_SCRIPT}\"]" -i _quarto.yml
             else
               # Check if our script is already in the post-render list
-              if ! yq eval '.project.post-render[] | select(. == "'${SLIDES_SCRIPT}'")' _quarto.yml | grep -q "${SLIDES_SCRIPT}"; then
+              if ! yq eval ".project.post-render[] | select(. == \"${SLIDES_SCRIPT}\")" _quarto.yml | grep -q "${SLIDES_SCRIPT}"; then
                 # Add our script to the existing post-render list
-                yq eval '.project.post-render += ["'${SLIDES_SCRIPT}'"]' -i _quarto.yml
+                yq eval ".project.post-render += [\"${SLIDES_SCRIPT}\"]" -i _quarto.yml
               else
                 echo "Script already exists in post-render list, skipping..."
               fi
