@@ -390,7 +390,7 @@ jobs:
             # Update existing _quarto.yml
             echo "Existing _quarto.yml found, merging configuration..."
             # Set output-dir (always overwrite)
-            yq eval '.project.output-dir = "${OUTPUT_DIRECTORY}"' -i _quarto.yml
+            yq eval ".project.output-dir = \"${OUTPUT_DIRECTORY}\"" -i _quarto.yml
             # Handle post-render array merging
             if yq eval '.project.post-render' _quarto.yml | grep -q "null"; then
               # No post-render exists, create it
