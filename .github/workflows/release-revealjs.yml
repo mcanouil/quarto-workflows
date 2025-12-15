@@ -376,7 +376,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
       - name: Upload artifact (revealjs)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
         with:
           name: release-assets
@@ -385,7 +385,7 @@ jobs:
             gh-pages.tar.gz
 
       - name: Upload artifact (default)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'false' }}
         with:
           name: release-assets
