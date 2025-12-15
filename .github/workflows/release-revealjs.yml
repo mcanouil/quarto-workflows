@@ -443,7 +443,7 @@ jobs:
 
       - name: Download PDF artifact
         id: download-release-assets-artifact
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: release-assets
           path: release_assets
