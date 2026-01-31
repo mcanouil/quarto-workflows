@@ -431,7 +431,9 @@ jobs:
             export QUARTO_LOG_LEVEL=DEBUG # debug
           fi
           for format in ${FORMATS}; do
+            echo "::group::Rendering ${format}"
             quarto render --to ${format}
+            echo "::endgroup::"
           done
 
           tar -czf gh-pages.tar.gz -C "${OUTPUT_DIRECTORY}" .
