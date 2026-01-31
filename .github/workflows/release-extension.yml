@@ -45,6 +45,11 @@ on:
         required: false
         default: false
         type: boolean
+      post-render:
+        description: "Add post-render script (slides to PDF)"
+        required: false
+        default: true
+        type: boolean
       gh-app-id:
         description: "GitHub App ID"
         required: false
@@ -363,6 +368,7 @@ jobs:
           tinytex: "${{ env.TINYTEX }}"
 
       - name: Checkout repository with sparse checkout
+        if: ${{ inputs.post-render }}
         uses: actions/checkout@v6
         with:
           repository: mcanouil/quarto-workflows
@@ -374,6 +380,7 @@ jobs:
         id: render-quarto
         env:
           PYTHON: ${{ inputs.python }}
+          POST_RENDER: ${{ inputs.post-render }}
           ACTIONS_STEP_DEBUG: ${{ vars.ACTIONS_STEP_DEBUG }}
           ACTIONS_RUNNER_DEBUG: ${{ vars.ACTIONS_RUNNER_DEBUG }}
         shell: bash
@@ -387,28 +394,30 @@ jobs:
           SLIDES_SCRIPT="workflows/.github/workflows/assets/slides-to-pdf.sh"
           if [ ! -f "_quarto.yml" ]; then
             # Create new _quarto.yml if it doesn't exist
-            {
-              echo "project:"
-              echo "  output-dir: ${OUTPUT_DIRECTORY}"
-              echo "  post-render:"
-              echo "    - ${SLIDES_SCRIPT}"
-            } > _quarto.yml
+            echo "project:" > _quarto.yml
+            echo "  output-dir: ${OUTPUT_DIRECTORY}" >> _quarto.yml
+            if [ "${POST_RENDER}" = "true" ]; then
+              echo "  post-render:" >> _quarto.yml
+              echo "    - ${SLIDES_SCRIPT}" >> _quarto.yml
+            fi
           else
             # Update existing _quarto.yml
             echo "Existing _quarto.yml found, merging configuration..."
             # Set output-dir (always overwrite)
             yq eval ".project.output-dir = \"${OUTPUT_DIRECTORY}\"" -i _quarto.yml
-            # Handle post-render array merging
-            if yq eval '.project.post-render' _quarto.yml | grep -q "null"; then
-              # No post-render exists, create it
-              yq eval ".project.post-render = [\"${SLIDES_SCRIPT}\"]" -i _quarto.yml
-            else
-              # Check if our script is already in the post-render list
-              if ! yq eval ".project.post-render[] | select(. == \"${SLIDES_SCRIPT}\")" _quarto.yml | grep -q "${SLIDES_SCRIPT}"; then
-                # Add our script to the existing post-render list
-                yq eval ".project.post-render += [\"${SLIDES_SCRIPT}\"]" -i _quarto.yml
+            if [ "${POST_RENDER}" = "true" ]; then
+              # Handle post-render array merging
+              if yq eval '.project.post-render' _quarto.yml | grep -q "null"; then
+                # No post-render exists, create it
+                yq eval ".project.post-render = [\"${SLIDES_SCRIPT}\"]" -i _quarto.yml
               else
-                echo "Script already exists in post-render list, skipping..."
+                # Check if our script is already in the post-render list
+                if ! yq eval ".project.post-render[] | select(. == \"${SLIDES_SCRIPT}\")" _quarto.yml | grep -q "${SLIDES_SCRIPT}"; then
+                  # Add our script to the existing post-render list
+                  yq eval ".project.post-render += [\"${SLIDES_SCRIPT}\"]" -i _quarto.yml
+                else
+                  echo "Script already exists in post-render list, skipping..."
+                fi
               fi
             fi
           fi
