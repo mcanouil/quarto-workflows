@@ -73,51 +73,28 @@ jobs:
     outputs:
       version: ${{ steps.bump-version.outputs.version }}
       release_title: ${{ steps.bump-version.outputs.release_title }}
+      release_notes: ${{ steps.bump-version.outputs.release_notes }}
       summary: ${{ steps.bump-version.outputs.summary }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Create GitHub App token
-        uses: actions/create-github-app-token@v2
-        id: app-token
-        if: ${{ inputs.gh-app-id != '' }}
+      - name: Setup Git User
+        uses: ./.github/actions/setup-git-user
+        id: setup-git-user
         with:
-          app-id: ${{ inputs.gh-app-id }}
-          private-key: ${{ secrets.APP_KEY }}
-
-      - name: Get GitHub App User ID
-        id: get-user-id
-        if: ${{ steps.app-token.outputs.app-slug != '' }}
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-        run: |
-          echo "user-id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)" >> "${GITHUB_OUTPUT}"
-
-      - name: Configure Environment for Git User
-        env:
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          USER_ID: ${{ steps.get-user-id.outputs.user-id }}
-        run: |
-          if [ -z "${APP_SLUG}" ]; then
-            USER_NAME="github-actions[bot]"
-            USER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
-          else
-            USER_NAME="${APP_SLUG}[bot]"
-            USER_EMAIL="${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
-          fi
-          git config --global user.name "${USER_NAME}"
-          git config --global user.email "${USER_EMAIL}"
+          gh-app-id: ${{ inputs.gh-app-id }}
+          app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Bump Version
         id: bump-version
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }} # gh cli
+          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
         shell: bash
         run: |
-          if git show-ref --quiet refs/heads/${BRANCH}; then
+          if git show-ref --quiet "refs/heads/${BRANCH}"; then
             echo "Branch ${BRANCH} already exists."
             git branch -D "${BRANCH}"
             git push origin --delete "${BRANCH}"
@@ -133,9 +110,9 @@ jobs:
           DATE=$(date +%Y-%m-%d)
           CURRENT_VERSION=$(grep "^version:" "${MANIFEST}" | sed 's/version: //;s/"//g')
           echo "Current Version: ${CURRENT_VERSION}"
-          MAJOR=$(echo ${CURRENT_VERSION} | cut -d. -f1)
-          MINOR=$(echo ${CURRENT_VERSION} | cut -d. -f2)
-          PATCH=$(echo ${CURRENT_VERSION} | cut -d. -f3)
+          MAJOR=$(echo "${CURRENT_VERSION}" | cut -d. -f1)
+          MINOR=$(echo "${CURRENT_VERSION}" | cut -d. -f2)
+          PATCH=$(echo "${CURRENT_VERSION}" | cut -d. -f3)
           echo "Bumping Version: ${BUMP_VERSION}"
           case "${BUMP_VERSION}" in
             "major")
@@ -164,10 +141,23 @@ jobs:
               git add "${file}" || echo "No changes to add"
             fi
           done
+
+          RELEASE_NOTES=""
+          if [ -f "CHANGELOG.md" ]; then
+            RELEASE_NOTES=$(awk '/^## Unreleased/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md | sed '/./,$!d' | head -c 10000)
+            if [ -n "${RELEASE_NOTES}" ]; then
+              sed -i "s/^## Unreleased$/## ${VERSION} - ${DATE}/" CHANGELOG.md
+              sed -i "/^## ${VERSION} - ${DATE}$/i\\
+          ## Unreleased\\
+          " CHANGELOG.md
+              git add CHANGELOG.md
+            fi
+          fi
+
           git add CITATION.cff || echo "No changes to add"
           git add "${MANIFEST}" || echo "No changes to add"
           git commit -m "${COMMIT}" || echo "No changes to commit"
-          git push --force origin ${BRANCH} || echo "No changes to push"
+          git push --force origin "${BRANCH}" || echo "No changes to push"
 
           sleep 5
           gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
@@ -192,6 +182,13 @@ jobs:
             echo "release_title=${RELEASE_TITLE} ${VERSION}"
             echo "summary=${SUMMARY}"
           } >> "${GITHUB_OUTPUT}"
+          if [ -n "${RELEASE_NOTES}" ]; then
+            {
+              echo "release_notes<<RELEASE_NOTES_DELIM"
+              echo "${RELEASE_NOTES}"
+              echo "RELEASE_NOTES_DELIM"
+            } >> "${GITHUB_OUTPUT}"
+          fi
 
   deploy:
     runs-on: ubuntu-latest
@@ -225,37 +222,13 @@ jobs:
           google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null 2>&1
           echo "Google Chrome is working properly."
 
-      - name: Create GitHub App token
-        uses: actions/create-github-app-token@v2
-        id: app-token
-        if: ${{ inputs.gh-app-id != '' }}
+      - name: Setup Git User
+        uses: ./.github/actions/setup-git-user
+        id: setup-git-user
         with:
-          app-id: ${{ inputs.gh-app-id }}
-          private-key: ${{ secrets.APP_KEY }}
-
-      - name: Get GitHub App User ID
-        id: get-user-id
-        if: ${{ steps.app-token.outputs.app-slug != '' }}
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-        run: |
-          echo "user-id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)" >> "${GITHUB_OUTPUT}"
-
-      - name: Configure Environment for Git User
-        env:
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          USER_ID: ${{ steps.get-user-id.outputs.user-id }}
-        run: |
-          if [ -z "${APP_SLUG}" ]; then
-            USER_NAME="github-actions[bot]"
-            USER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
-          else
-            USER_NAME="${APP_SLUG}[bot]"
-            USER_EMAIL="${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
-          fi
-          git config --global user.name "${USER_NAME}"
-          git config --global user.email "${USER_EMAIL}"
+          gh-app-id: ${{ inputs.gh-app-id }}
+          app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Update branch
         run: |
@@ -491,7 +464,7 @@ jobs:
       - name: Update template thumbnail
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }} # gh cli
+          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
           RELEASE_ASSETS_PATH: ${{ steps.render-quarto.outputs.release_assets_path }}
           BRANCH: ci/update-thumbs
           COMMIT: "ci: update thumbs :art:"
@@ -499,7 +472,7 @@ jobs:
         run: |
           if [ -f "${OUTPUT_DIRECTORY}/index.png" ]; then
             mv -f "${OUTPUT_DIRECTORY}/index.png" .github/template.png
-            if git show-ref --quiet refs/heads/${BRANCH}; then
+            if git show-ref --quiet "refs/heads/${BRANCH}"; then
               echo "Branch ${BRANCH} already exists."
               git branch -D "${BRANCH}"
               git push origin --delete "${BRANCH}"
@@ -508,7 +481,7 @@ jobs:
             git add .github/template.png || echo "No changes to add"
             if ! git diff --cached --quiet; then
               git commit -m "${COMMIT}"
-              git push --force origin ${BRANCH}
+              git push --force origin "${BRANCH}"
               gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
               sleep 5
               gh pr merge --auto --squash --delete-branch
@@ -543,37 +516,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Create GitHub App token
-        uses: actions/create-github-app-token@v2
-        id: app-token
-        if: ${{ inputs.gh-app-id != '' }}
+      - name: Setup Git User
+        uses: ./.github/actions/setup-git-user
+        id: setup-git-user
         with:
-          app-id: ${{ inputs.gh-app-id }}
-          private-key: ${{ secrets.APP_KEY }}
-
-      - name: Get GitHub App User ID
-        id: get-user-id
-        if: ${{ steps.app-token.outputs.app-slug != '' }}
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-        run: |
-          echo "user-id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)" >> "${GITHUB_OUTPUT}"
-
-      - name: Configure Environment for Git User
-        env:
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          USER_ID: ${{ steps.get-user-id.outputs.user-id }}
-        run: |
-          if [ -z "${APP_SLUG}" ]; then
-            USER_NAME="github-actions[bot]"
-            USER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
-          else
-            USER_NAME="${APP_SLUG}[bot]"
-            USER_EMAIL="${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
-          fi
-          git config --global user.name "${USER_NAME}"
-          git config --global user.email "${USER_EMAIL}"
+          gh-app-id: ${{ inputs.gh-app-id }}
+          app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Update branch
         run: |
@@ -590,9 +539,10 @@ jobs:
 
       - name: Release extension on GitHub
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }} # gh cli
+          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
           VERSION: ${{ needs.bump-version.outputs.version }}
           RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
+          RELEASE_NOTES: ${{ needs.bump-version.outputs.release_notes }}
         shell: bash
         run: |
           assets=()
@@ -600,10 +550,18 @@ jobs:
             assets+=("${file}")
           done < <(find release_assets -type f -print0)
 
-          gh release create "${VERSION}" \
-            --title "${RELEASE_TITLE}" \
-            --generate-notes \
-            "${assets[@]}"
+          if [ -n "${RELEASE_NOTES}" ]; then
+            echo "${RELEASE_NOTES}" > release_notes.md
+            gh release create "${VERSION}" \
+              --title "${RELEASE_TITLE}" \
+              --notes-file release_notes.md \
+              "${assets[@]}"
+          else
+            gh release create "${VERSION}" \
+              --title "${RELEASE_TITLE}" \
+              --generate-notes \
+              "${assets[@]}"
+          fi
 
       - name: Display workflow summary
         env:
