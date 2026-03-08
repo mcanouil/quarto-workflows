@@ -98,8 +98,8 @@ jobs:
           if [ -f "CHANGELOG.md" ]; then
             RELEASE_NOTES=$(awk '/^## Unreleased/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md | sed '/./,$!d' | head -c 10000)
             if [ -n "${RELEASE_NOTES}" ]; then
-              sed -i "s/^## Unreleased$/## ${VERSION} - ${DATE}/" CHANGELOG.md
-              sed -i "/^## ${VERSION} - ${DATE}$/i\\
+              sed -i "s/^## Unreleased$/## ${VERSION} (${DATE})/" CHANGELOG.md
+              sed -i "/^## ${VERSION} (${DATE})$/i\\
           ## Unreleased\\
           " CHANGELOG.md
               git add CHANGELOG.md
