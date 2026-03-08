@@ -81,7 +81,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Git User
-        uses: ./.github/actions/setup-git-user
+        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
           gh-app-id: ${{ inputs.gh-app-id }}
@@ -223,7 +223,7 @@ jobs:
           echo "Google Chrome is working properly."
 
       - name: Setup Git User
-        uses: ./.github/actions/setup-git-user
+        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
           gh-app-id: ${{ inputs.gh-app-id }}
@@ -517,7 +517,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Git User
-        uses: ./.github/actions/setup-git-user
+        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
           gh-app-id: ${{ inputs.gh-app-id }}
