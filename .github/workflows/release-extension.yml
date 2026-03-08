@@ -550,18 +550,39 @@ jobs:
             assets+=("${file}")
           done < <(find release_assets -type f -print0)
 
-          if [ -n "${RELEASE_NOTES}" ]; then
-            echo "${RELEASE_NOTES}" > release_notes.md
-            gh release create "${VERSION}" \
-              --title "${RELEASE_TITLE}" \
-              --notes-file release_notes.md \
-              "${assets[@]}"
-          else
-            gh release create "${VERSION}" \
-              --title "${RELEASE_TITLE}" \
-              --generate-notes \
-              "${assets[@]}"
-          fi
+          PREVIOUS_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
+          GENERATE_NOTES_PAYLOAD=$(jq -n \
+            --arg tag "${VERSION}" \
+            --arg previous "${PREVIOUS_TAG}" \
+            'if $previous == "" then {tag_name: $tag} else {tag_name: $tag, previous_tag_name: $previous} end'
+          )
+          AUTO_NOTES=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            --method POST \
+            --input - <<< "${GENERATE_NOTES_PAYLOAD}" \
+            --jq '.body' 2>/dev/null || echo "")
+
+          {
+            echo "## Installation"
+            echo ""
+            echo '```bash'
+            echo "quarto add ${GITHUB_REPOSITORY}@${VERSION}"
+            echo '```'
+            echo ""
+            if [ -n "${RELEASE_NOTES}" ]; then
+              echo "## Changelog"
+              echo ""
+              echo "${RELEASE_NOTES}"
+              echo ""
+            fi
+            if [ -n "${AUTO_NOTES}" ]; then
+              echo "${AUTO_NOTES}"
+            fi
+          } > release_notes.md
+
+          gh release create "${VERSION}" \
+            --title "${RELEASE_TITLE}" \
+            --notes-file release_notes.md \
+            "${assets[@]}"
 
       - name: Display workflow summary
         env:
