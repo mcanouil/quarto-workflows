@@ -1,0 +1,797 @@
+name: Release
+
+on:
+  workflow_call:
+    secrets:
+      GH_TOKEN:
+        description: "GitHub token"
+        required: false
+      APP_KEY:
+        description: "GitHub App private key"
+        required: false
+    inputs:
+      version:
+        description: "Version bump type (patch/minor/major) - used for extensions only"
+        required: false
+        default: "minor"
+        type: string
+      quarto:
+        description: "Quarto version"
+        required: false
+        default: "release"
+        type: string
+      gh-app-id:
+        description: "GitHub App ID"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+  pages: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    env:
+      BRANCH: ci/bump-version
+      COMMIT: "ci: bump version for release :rocket:"
+      BUMP_VERSION: ${{ inputs.version }}
+
+    outputs:
+      version: ${{ steps.bump-version.outputs.version }}
+      release_title: ${{ steps.bump-version.outputs.release_title }}
+      release_notes: ${{ steps.bump-version.outputs.release_notes }}
+      summary: ${{ steps.bump-version.outputs.summary }}
+      project_type: ${{ steps.detect-project.outputs.project_type }}
+      extension_name: ${{ steps.detect-project.outputs.extension_name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Git User
+        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
+        id: setup-git-user
+        with:
+          gh-app-id: ${{ inputs.gh-app-id }}
+          app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Detect project type
+        id: detect-project
+        shell: bash
+        run: |
+          REPO="${GITHUB_REPOSITORY}"
+          PREFIX="${GITHUB_REPOSITORY_OWNER}/quarto-"
+          if [ -d "_extensions" ] && ls -d _extensions/*/ > /dev/null 2>&1; then
+            PROJECT_TYPE="extension"
+            EXTENSION="${REPO#${PREFIX}}"
+            EXTENSION=${EXTENSION#revealjs-}
+          else
+            PROJECT_TYPE="presentation"
+            EXTENSION=""
+          fi
+          echo "Project type: ${PROJECT_TYPE}"
+          echo "Extension name: ${EXTENSION}"
+          {
+            echo "project_type=${PROJECT_TYPE}"
+            echo "extension_name=${EXTENSION}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Bump Version
+        id: bump-version
+        env:
+          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
+          PROJECT_TYPE: ${{ steps.detect-project.outputs.project_type }}
+          EXTENSION: ${{ steps.detect-project.outputs.extension_name }}
+        shell: bash
+        run: |
+          if git show-ref --quiet "refs/heads/${BRANCH}"; then
+            echo "Branch ${BRANCH} already exists."
+            git branch -D "${BRANCH}"
+            git push origin --delete "${BRANCH}"
+          fi
+          git checkout -b "${BRANCH}"
+
+          DATE=$(date +%Y-%m-%d)
+
+          if [ "${PROJECT_TYPE}" = "extension" ]; then
+            # Semantic versioning for extensions
+            MANIFEST="_extensions/${EXTENSION}/_extension.yml"
+            echo "Manifest: ${MANIFEST}"
+            CURRENT_VERSION=$(grep "^version:" "${MANIFEST}" | sed 's/version: //;s/"//g')
+            echo "Current Version: ${CURRENT_VERSION}"
+            MAJOR=$(echo "${CURRENT_VERSION}" | cut -d. -f1)
+            MINOR=$(echo "${CURRENT_VERSION}" | cut -d. -f2)
+            PATCH=$(echo "${CURRENT_VERSION}" | cut -d. -f3)
+            echo "Bumping Version: ${BUMP_VERSION}"
+            case "${BUMP_VERSION}" in
+              "major")
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              "minor")
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              *)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+            VERSION="${MAJOR}.${MINOR}.${PATCH}"
+            echo "New Version: ${VERSION}"
+            sed -i "s/^version:.*/version: ${VERSION}/" "${MANIFEST}"
+            sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
+            sed -i "s/^date-released:.*/date-released: \"${DATE}\"/" CITATION.cff
+            REPO="${GITHUB_REPOSITORY}"
+            for file in README.md template.qmd example.qmd; do
+              if [ -f "${file}" ]; then
+                sed -i "s|${REPO}@[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*|${REPO}@${VERSION}|g" "${file}"
+                sed -i -E "s|([^/])${REPO}([^@/])|\1${REPO}@${VERSION}\2|g; s|([^/])${REPO}\$|\1${REPO}@${VERSION}|g; s|^${REPO}([^@/])|${REPO}@${VERSION}\1|g; s|^${REPO}\$|${REPO}@${VERSION}|g" "${file}"
+                git add "${file}" || echo "No changes to add"
+              fi
+            done
+            git add CITATION.cff || echo "No changes to add"
+            git add "${MANIFEST}" || echo "No changes to add"
+
+            RELEASE_TITLE=${EXTENSION^^}
+            RELEASE_TITLE="${RELEASE_TITLE//-/ } ${VERSION}"
+          else
+            # Date-based versioning for presentations
+            CURRENT_DATE=$(date +%Y-%m-%d)
+            PREV_DATE=$(grep '^date-released:' CITATION.cff | awk '{print $2}' | tr -d '"')
+            VERSION=$(grep '^version:' CITATION.cff | awk '{print $2}')
+            if [ "${PREV_DATE}" = "${CURRENT_DATE}" ]; then
+              if [[ "${VERSION}" =~ -([0-9]+)$ ]]; then
+                NUMBER=$(( ${BASH_REMATCH[1]} + 1 ))
+                VERSION="${VERSION%-*}-${NUMBER}"
+              else
+                VERSION="${VERSION}-2"
+              fi
+            else
+              VERSION=${CURRENT_DATE//-/.}
+            fi
+            sed -i "s/^date-released:.*/date-released: \"${DATE}\"/" CITATION.cff
+            sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
+            git add CITATION.cff || echo "No changes to add"
+            RELEASE_TITLE="${DATE}"
+          fi
+
+          # Shared: update CHANGELOG.md
+          RELEASE_NOTES=""
+          if [ -f "CHANGELOG.md" ]; then
+            RELEASE_NOTES=$(awk '/^## Unreleased/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md | sed '/./,$!d' | head -c 10000)
+            if [ -n "${RELEASE_NOTES}" ]; then
+              sed -i "s/^## Unreleased$/## ${VERSION} (${DATE})/" CHANGELOG.md
+              sed -i "/^## ${VERSION} (${DATE})$/i\\
+          ## Unreleased\\
+          " CHANGELOG.md
+              git add CHANGELOG.md
+            fi
+          fi
+
+          git commit -m "${COMMIT}" || echo "No changes to commit"
+          git push --force origin "${BRANCH}" || echo "No changes to push"
+
+          sleep 5
+          gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
+          sleep 5
+          gh pr merge --auto --squash --delete-branch
+          sleep 5
+
+          # Build version bump summary
+          SUMMARY="## Version Bump\n\n"
+          SUMMARY+="| Field | Value |\n"
+          SUMMARY+="|-------|--------|\n"
+          if [ "${PROJECT_TYPE}" = "extension" ]; then
+            SUMMARY+="| Extension | \`${EXTENSION}\` |\n"
+            SUMMARY+="| Previous Version | \`${CURRENT_VERSION}\` |\n"
+            SUMMARY+="| New Version | \`${VERSION}\` |\n"
+            SUMMARY+="| Bump Type | \`${BUMP_VERSION}\` |\n"
+          else
+            SUMMARY+="| New Version | \`${VERSION}\` |\n"
+          fi
+          SUMMARY+="| Release Date | \`${DATE}\` |\n"
+
+          {
+            echo "version=${VERSION}"
+            echo "release_title=${RELEASE_TITLE}"
+            echo "summary=${SUMMARY}"
+          } >> "${GITHUB_OUTPUT}"
+          if [ -n "${RELEASE_NOTES}" ]; then
+            {
+              echo "release_notes<<RELEASE_NOTES_DELIM"
+              echo "${RELEASE_NOTES}"
+              echo "RELEASE_NOTES_DELIM"
+            } >> "${GITHUB_OUTPUT}"
+          fi
+
+  deploy:
+    runs-on: ubuntu-latest
+
+    needs: bump-version
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    env:
+      QUARTOVERSION: ${{ inputs.quarto }}
+      PROJECT_TYPE: ${{ needs.bump-version.outputs.project_type }}
+
+    outputs:
+      gh_pages_url: ${{ steps.deployment.outputs.page_url }}
+      summary: ${{ steps.deployment-summary.outputs.summary }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check and fix Google Chrome
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1
+          ldd /usr/bin/google-chrome | grep "not found" || echo "All Chrome dependencies satisfied."
+          google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null 2>&1
+          echo "Google Chrome is working properly."
+
+      - name: Setup Git User
+        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
+        id: setup-git-user
+        with:
+          gh-app-id: ${{ inputs.gh-app-id }}
+          app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Update branch
+        run: |
+          git fetch --all
+          git checkout "${GITHUB_REF_NAME}"
+          git pull origin "${GITHUB_REF_NAME}"
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: "${{ env.QUARTOVERSION }}"
+          tinytex: false
+
+      - name: Detect project directory and configure
+        id: detect-project-dir
+        shell: bash
+        run: |
+          if [ -f "docs/_quarto.yml" ]; then
+            PROJECT_DIR="docs"
+            OUTPUT_DIRECTORY="docs/_site"
+            echo "Using docs/ as project directory"
+          else
+            PROJECT_DIR="."
+            OUTPUT_DIRECTORY="_site"
+            echo "Using root as project directory"
+
+            # Create or update _quarto.yml
+            if [ ! -f "_quarto.yml" ]; then
+              echo "project:" > _quarto.yml
+              echo "  output-dir: ${OUTPUT_DIRECTORY}" >> _quarto.yml
+            else
+              echo "Existing _quarto.yml found, merging configuration..."
+              yq eval ".project.output-dir = \"${OUTPUT_DIRECTORY}\"" -i _quarto.yml
+            fi
+          fi
+          echo "Updated _quarto.yml:"
+          cat "${PROJECT_DIR}/_quarto.yml"
+          {
+            echo "project_dir=${PROJECT_DIR}"
+            echo "output_directory=${OUTPUT_DIRECTORY}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Auto-detect formats and engines
+        id: inspect
+        env:
+          PROJECT_DIR: ${{ steps.detect-project-dir.outputs.project_dir }}
+        shell: bash
+        run: |
+          echo "::group::Quarto Inspect"
+
+          # Get input .qmd files only (exclude .md to avoid spurious "html" format)
+          INPUT_FILES=$(quarto inspect "${PROJECT_DIR}" 2>/dev/null \
+            | jq -r '.files.input[] | select(endswith(".qmd"))' 2>/dev/null)
+
+          DETECTED_FORMATS=""
+          DETECTED_ENGINES=""
+
+          for qmd_file in ${INPUT_FILES}; do
+            echo "Inspecting: ${qmd_file}"
+            INSPECT_JSON=$(quarto inspect "${qmd_file}" 2>/dev/null || true)
+            if [ -z "${INSPECT_JSON}" ]; then
+              echo "  Skipped (no output)"
+              continue
+            fi
+
+            # Collect formats
+            FILE_FORMATS=$(echo "${INSPECT_JSON}" | jq -r '.formats | keys[]' 2>/dev/null || true)
+            for fmt in ${FILE_FORMATS}; do
+              if ! echo " ${DETECTED_FORMATS} " | grep -qF " ${fmt} "; then
+                DETECTED_FORMATS="${DETECTED_FORMATS} ${fmt}"
+              fi
+            done
+
+            # Collect engines (document-specific: "markdown", "knitr", "jupyter", "julia")
+            FILE_ENGINES=$(echo "${INSPECT_JSON}" | jq -r '.engines[]' 2>/dev/null || true)
+            for eng in ${FILE_ENGINES}; do
+              if ! echo " ${DETECTED_ENGINES} " | grep -qF " ${eng} "; then
+                DETECTED_ENGINES="${DETECTED_ENGINES} ${eng}"
+              fi
+            done
+
+            echo "  Formats: ${FILE_FORMATS}"
+            echo "  Engines: ${FILE_ENGINES}"
+          done
+
+          FORMATS=$(echo "${DETECTED_FORMATS}" | xargs)
+          ENGINES=$(echo "${DETECTED_ENGINES}" | xargs)
+
+          # Derive setup flags from engines
+          NEED_R=false
+          NEED_PYTHON=false
+          NEED_JULIA=false
+          NEED_TINYTEX=false
+
+          if echo " ${ENGINES} " | grep -qF " knitr "; then
+            NEED_R=true
+          fi
+          if echo " ${ENGINES} " | grep -qF " jupyter "; then
+            NEED_PYTHON=true
+          fi
+          if echo " ${ENGINES} " | grep -qF " julia "; then
+            NEED_JULIA=true
+          fi
+
+          # Derive TinyTeX need from formats
+          for fmt in ${FORMATS}; do
+            case "${fmt}" in
+              *pdf*|*beamer*|*latex*) NEED_TINYTEX=true; break ;;
+            esac
+          done
+
+          # Derive decktape need from formats and project type
+          NEED_DECKTAPE=false
+          if [ "${PROJECT_TYPE}" = "presentation" ]; then
+            if echo "${FORMATS}" | grep -q "revealjs"; then
+              NEED_DECKTAPE=true
+            fi
+          else
+            for fmt in ${FORMATS}; do
+              if echo "${fmt}" | grep -q "revealjs" && [ "${fmt}" != "revealjs" ]; then
+                NEED_DECKTAPE=true
+                break
+              fi
+            done
+          fi
+
+          echo "::endgroup::"
+
+          echo "Auto-detected formats: ${FORMATS}"
+          echo "Auto-detected engines: ${ENGINES}"
+          echo "Need R: ${NEED_R}, Python: ${NEED_PYTHON}, Julia: ${NEED_JULIA}"
+          echo "Need TinyTeX: ${NEED_TINYTEX}, Decktape: ${NEED_DECKTAPE}"
+
+          {
+            echo "formats=${FORMATS}"
+            echo "engines=${ENGINES}"
+            echo "need_r=${NEED_R}"
+            echo "need_python=${NEED_PYTHON}"
+            echo "need_julia=${NEED_JULIA}"
+            echo "need_tinytex=${NEED_TINYTEX}"
+            echo "need_decktape=${NEED_DECKTAPE}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Install TinyTeX
+        if: ${{ steps.inspect.outputs.need_tinytex == 'true' }}
+        shell: bash
+        run: quarto install tinytex --update-path
+
+      - name: Check R environment
+        id: check-r-env
+        if: ${{ steps.inspect.outputs.need_r == 'true' }}
+        run: |
+          if [ -f "renv.lock" ]; then
+            echo "renv=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "renv=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Set up R
+        if: ${{ steps.inspect.outputs.need_r == 'true' }}
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install renv
+        if: ${{ steps.inspect.outputs.need_r == 'true' && steps.check-r-env.outputs.renv == 'true' }}
+        uses: r-lib/actions/setup-renv@v2
+
+      - name: Install R dependencies
+        if: ${{ steps.inspect.outputs.need_r == 'true' }}
+        env:
+          RENV: ${{ steps.check-r-env.outputs.renv == 'true' }}
+        shell: bash
+        run: |
+          if [ "${RENV}" = "true" ]; then
+            Rscript -e 'renv::restore()'
+          else
+            Rscript -e 'install.packages(c("knitr", "rmarkdown"))'
+          fi
+
+      - name: Check Python environment
+        id: check-python-env
+        if: ${{ steps.inspect.outputs.need_python == 'true' }}
+        run: |
+          if [ -f "pyproject.toml" ]; then
+            echo "python=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "python=false" >> "${GITHUB_OUTPUT}"
+          fi
+          if [ -f "uv.lock" ]; then
+            echo "uv=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "uv=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install uv (with cache)
+        if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.uv == 'true' }}
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install uv (without cache)
+        if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.uv == 'false' }}
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python (from pyproject.toml)
+        if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.python == 'true' }}
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Set up Python (default)
+        if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.python == 'false' }}
+        uses: actions/setup-python@v6
+
+      - name: Install Python dependencies
+        if: ${{ steps.inspect.outputs.need_python == 'true' }}
+        env:
+          UV: ${{ steps.check-python-env.outputs.uv == 'true' }}
+        shell: bash
+        run: |
+          if [ "${UV}" = "true" ]; then
+            uv sync
+          else
+            uv init --no-package --vcs none --bare --no-readme --author-from none
+            uv venv
+            source .venv/bin/activate
+            uv add jupyter papermill
+            uv sync
+          fi
+
+      - name: Set up Julia
+        if: ${{ steps.inspect.outputs.need_julia == 'true' }}
+        uses: julia-actions/setup-julia@v2
+
+      - name: Install Julia dependencies
+        if: ${{ steps.inspect.outputs.need_julia == 'true' }}
+        shell: bash
+        run: |
+          julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
+          julia --project=. -e 'using Pkg; Pkg.add(["IJulia"])'
+
+      - name: Set up Node.js
+        if: ${{ steps.inspect.outputs.need_decktape == 'true' }}
+        uses: actions/setup-node@v6
+
+      - name: Checkout slides-to-pdf script
+        if: ${{ steps.inspect.outputs.need_decktape == 'true' }}
+        uses: actions/checkout@v6
+        with:
+          repository: mcanouil/quarto-workflows
+          sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
+          sparse-checkout-cone-mode: false
+          path: workflows
+
+      - name: Render Quarto Project
+        id: render-quarto
+        env:
+          PROJECT_DIR: ${{ steps.detect-project-dir.outputs.project_dir }}
+          OUTPUT_DIRECTORY: ${{ steps.detect-project-dir.outputs.output_directory }}
+          FORMATS: ${{ steps.inspect.outputs.formats }}
+          NEED_PYTHON: ${{ steps.inspect.outputs.need_python }}
+          NEED_DECKTAPE: ${{ steps.inspect.outputs.need_decktape }}
+          VERSION: ${{ needs.bump-version.outputs.version }}
+          EXTENSION_NAME: ${{ needs.bump-version.outputs.extension_name }}
+          ACTIONS_STEP_DEBUG: ${{ vars.ACTIONS_STEP_DEBUG }}
+          ACTIONS_RUNNER_DEBUG: ${{ vars.ACTIONS_RUNNER_DEBUG }}
+        shell: bash
+        run: |
+          if [ "${NEED_PYTHON}" = "true" ] && [ -f ".venv/bin/activate" ]; then
+            source .venv/bin/activate
+          fi
+          if [ "${NEED_DECKTAPE}" = "true" ]; then
+            npm install -g decktape
+
+            # Add post-render script to _quarto.yml if not using docs/
+            if [ "${PROJECT_DIR}" = "." ]; then
+              SLIDES_SCRIPT="workflows/.github/workflows/assets/slides-to-pdf.sh"
+              if yq eval '.project.post-render' _quarto.yml | grep -q "null"; then
+                yq eval ".project.post-render = [\"${SLIDES_SCRIPT}\"]" -i _quarto.yml
+              else
+                if ! yq eval ".project.post-render[] | select(. == \"${SLIDES_SCRIPT}\")" _quarto.yml | grep -q "${SLIDES_SCRIPT}"; then
+                  yq eval ".project.post-render += [\"${SLIDES_SCRIPT}\"]" -i _quarto.yml
+                fi
+              fi
+            fi
+          fi
+
+          echo "Final _quarto.yml:"
+          cat "${PROJECT_DIR}/_quarto.yml"
+
+          if [ "${ACTIONS_RUNNER_DEBUG}" = "true" ] || [ "${ACTIONS_STEP_DEBUG}" = "true" ]; then
+            export QUARTO_DENO_V8_OPTIONS=--stack-trace-limit=100
+            export QUARTO_PRINT_STACK=true
+            export QUARTO_LOG_LEVEL=DEBUG
+          fi
+
+          # Render each format individually
+          if [ -n "${FORMATS}" ]; then
+            for format in ${FORMATS}; do
+              echo "::group::Rendering ${format}"
+              quarto render "${PROJECT_DIR}" --to "${format}"
+              echo "::endgroup::"
+            done
+          else
+            echo "::group::Rendering (default)"
+            quarto render "${PROJECT_DIR}"
+            echo "::endgroup::"
+          fi
+
+          # Package rendered output
+          tar -czf gh-pages.tar.gz -C "${OUTPUT_DIRECTORY}" .
+
+          # Package _extensions/ if present (named as {extension}-v{version}.tar.gz and .zip)
+          if [ -d "_extensions" ]; then
+            ASSET_NAME="${EXTENSION_NAME}-v${VERSION}"
+            tar -czf "${ASSET_NAME}.tar.gz" _extensions/
+            zip -qr "${ASSET_NAME}.zip" _extensions/
+            echo "extensions_asset_exists=true" >> "${GITHUB_OUTPUT}"
+            echo "extensions_asset_name=${ASSET_NAME}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "extensions_asset_exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+          # Check for slides assets (created by post-render script)
+          if [ -d "release_assets" ]; then
+            echo "slides_assets_exists=true" >> "${GITHUB_OUTPUT}"
+            echo "release_assets_path=$(pwd)/release_assets" >> "${GITHUB_OUTPUT}"
+          else
+            echo "slides_assets_exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload pages artifact
+        id: upload-artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: "${{ steps.detect-project-dir.outputs.output_directory }}"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Upload release assets (slides + extensions)
+        uses: actions/upload-artifact@v7
+        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' && steps.render-quarto.outputs.extensions_asset_exists == 'true' }}
+        with:
+          name: release-assets
+          path: |
+            ${{ steps.render-quarto.outputs.release_assets_path }}
+            gh-pages.tar.gz
+            ${{ steps.render-quarto.outputs.extensions_asset_name }}.tar.gz
+            ${{ steps.render-quarto.outputs.extensions_asset_name }}.zip
+
+      - name: Upload release assets (extensions only)
+        uses: actions/upload-artifact@v7
+        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'false' && steps.render-quarto.outputs.extensions_asset_exists == 'true' }}
+        with:
+          name: release-assets
+          path: |
+            gh-pages.tar.gz
+            ${{ steps.render-quarto.outputs.extensions_asset_name }}.tar.gz
+            ${{ steps.render-quarto.outputs.extensions_asset_name }}.zip
+
+      - name: Upload release assets (slides only)
+        uses: actions/upload-artifact@v7
+        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' && steps.render-quarto.outputs.extensions_asset_exists == 'false' }}
+        with:
+          name: release-assets
+          path: |
+            ${{ steps.render-quarto.outputs.release_assets_path }}
+            gh-pages.tar.gz
+
+      - name: Upload release assets (default)
+        uses: actions/upload-artifact@v7
+        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'false' && steps.render-quarto.outputs.extensions_asset_exists == 'false' }}
+        with:
+          name: release-assets
+          path: |
+            gh-pages.tar.gz
+
+      - name: Update template thumbnail
+        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
+          OUTPUT_DIRECTORY: ${{ steps.detect-project-dir.outputs.output_directory }}
+          BRANCH: ci/update-thumbs
+          COMMIT: "ci: update thumbs :art:"
+        shell: bash
+        run: |
+          if [ -f "${OUTPUT_DIRECTORY}/index.png" ]; then
+            mv -f "${OUTPUT_DIRECTORY}/index.png" .github/template.png
+            if git show-ref --quiet "refs/heads/${BRANCH}"; then
+              echo "Branch ${BRANCH} already exists."
+              git branch -D "${BRANCH}"
+              git push origin --delete "${BRANCH}"
+            fi
+            git checkout -b "${BRANCH}"
+            git add .github/template.png || echo "No changes to add"
+            if ! git diff --cached --quiet; then
+              git commit -m "${COMMIT}"
+              git push --force origin "${BRANCH}"
+              gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
+              sleep 5
+              gh pr merge --auto --squash --delete-branch
+              sleep 5
+            else
+              echo "No changes to commit."
+            fi
+          fi
+
+      - name: Add deployment summary
+        id: deployment-summary
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          FORMATS: ${{ steps.inspect.outputs.formats }}
+          ENGINES: ${{ steps.inspect.outputs.engines }}
+        shell: bash
+        run: |
+          SUMMARY="## Deployment\n\n"
+          SUMMARY+="| Field | Value |\n"
+          SUMMARY+="|-------|--------|\n"
+          SUMMARY+="| Quarto Version | \`${QUARTOVERSION}\` |\n"
+          SUMMARY+="| Output Formats | \`${FORMATS}\` |\n"
+          SUMMARY+="| Engines | \`${ENGINES}\` |\n"
+          SUMMARY+="| GitHub Pages URL | [${PAGE_URL}](${PAGE_URL}) |\n"
+          echo "summary=${SUMMARY}" >> "${GITHUB_OUTPUT}"
+
+  release:
+    runs-on: ubuntu-latest
+
+    needs:
+      - bump-version
+      - deploy
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Git User
+        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
+        id: setup-git-user
+        with:
+          gh-app-id: ${{ inputs.gh-app-id }}
+          app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Update branch
+        run: |
+          git fetch --all
+          git checkout "${GITHUB_REF_NAME}"
+          git pull origin "${GITHUB_REF_NAME}"
+
+      - name: Download release assets
+        id: download-release-assets-artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: release-assets
+          path: release_assets
+
+      - name: Release on GitHub
+        env:
+          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
+          VERSION: ${{ needs.bump-version.outputs.version }}
+          RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
+          RELEASE_NOTES: ${{ needs.bump-version.outputs.release_notes }}
+          PROJECT_TYPE: ${{ needs.bump-version.outputs.project_type }}
+        shell: bash
+        run: |
+          assets=()
+          while IFS= read -r -d '' file; do
+            assets+=("${file}")
+          done < <(find release_assets -type f -print0)
+
+          PREVIOUS_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
+          GENERATE_NOTES_PAYLOAD=$(jq -n \
+            --arg tag "${VERSION}" \
+            --arg previous "${PREVIOUS_TAG}" \
+            'if $previous == "" then {tag_name: $tag} else {tag_name: $tag, previous_tag_name: $previous} end'
+          )
+          AUTO_NOTES=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            --method POST \
+            --input - <<< "${GENERATE_NOTES_PAYLOAD}" \
+            --jq '.body' 2>/dev/null || echo "")
+
+          {
+            if [ "${PROJECT_TYPE}" = "extension" ]; then
+              echo "## Installation"
+              echo ""
+              echo '```bash'
+              echo "quarto add ${GITHUB_REPOSITORY}@${VERSION}"
+              echo '```'
+              echo ""
+            fi
+            if [ -n "${RELEASE_NOTES}" ]; then
+              echo "## Changelog"
+              echo ""
+              echo "${RELEASE_NOTES}"
+              echo ""
+            fi
+            if [ -n "${AUTO_NOTES}" ]; then
+              echo "${AUTO_NOTES}"
+            fi
+          } > release_notes.md
+
+          gh release create "${VERSION}" \
+            --title "${RELEASE_TITLE}" \
+            --notes-file release_notes.md \
+            "${assets[@]}"
+
+      - name: Display workflow summary
+        env:
+          GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
+          VERSION: ${{ needs.bump-version.outputs.version }}
+          BUMP_SUMMARY: ${{ needs.bump-version.outputs.summary }}
+          DEPLOY_SUMMARY: ${{ needs.deploy.outputs.summary }}
+          PROJECT_TYPE: ${{ needs.bump-version.outputs.project_type }}
+          EXTENSION: ${{ needs.bump-version.outputs.extension_name }}
+        shell: bash
+        run: |
+          {
+            echo "# Release Summary"
+            echo ""
+            echo "*Automated release completed successfully*"
+            echo ""
+            if [ "${PROJECT_TYPE}" = "extension" ]; then
+              echo "### Extension Details"
+              echo "- **Extension Name**: \`${EXTENSION}\`"
+              echo "- **Version**: \`${VERSION}\`"
+            else
+              echo "### Presentation Details"
+              echo "- **Version**: \`${VERSION}\`"
+            fi
+            echo ""
+            echo "### Links"
+            echo "- [GitHub Release](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${VERSION})"
+            echo "- [Live Demo](${GH_PAGES_URL})"
+            echo ""
+            echo "---"
+            echo ""
+            echo -e "${BUMP_SUMMARY}"
+            echo ""
+            echo -e "${DEPLOY_SUMMARY}"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
