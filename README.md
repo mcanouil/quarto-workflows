@@ -30,6 +30,18 @@ Key features include:
 | `quarto`    | `"release"` | Quarto version to install (`release` or `pre-release`).                                           |
 | `gh-app-id` |             | GitHub App ID for authentication (optional).                                                      |
 
+#### Secrets
+
+The workflow accepts secrets via `secrets: inherit`.
+When a GitHub App is used for authentication (recommended), the following secrets should be configured in the calling repository:
+
+| Secret    | Description                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------- |
+| `APP_KEY` | GitHub App private key. Required when `gh-app-id` is provided. Used to generate tokens for GitHub operations. |
+
+Alternatively, if not using a GitHub App, the workflow falls back to the default `GITHUB_TOKEN`.
+A `GH_TOKEN` secret (personal access token) can also be provided as an override.
+
 #### Example
 
 The `version` input is only relevant for extension repos (repos with `_extensions/`).
