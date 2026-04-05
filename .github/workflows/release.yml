@@ -724,8 +724,7 @@ jobs:
             assets+=("${file}")
           done < <(find release_assets -type f -print0)
 
-          PREVIOUS_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
-          [[ "${PREVIOUS_TAG}" == "null" || -z "${PREVIOUS_TAG}" ]] && PREVIOUS_TAG=""
+          PREVIOUS_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null) || PREVIOUS_TAG=""
           GENERATE_NOTES_PAYLOAD=$(jq -n \
             --arg tag "${VERSION}" \
             --arg previous "${PREVIOUS_TAG}" \
@@ -734,7 +733,7 @@ jobs:
           AUTO_NOTES=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             --method POST \
             --input - <<< "${GENERATE_NOTES_PAYLOAD}" \
-            --jq '.body' 2>/dev/null || echo "")
+            --jq '.body' 2>/dev/null) || AUTO_NOTES=""
 
           {
             if [ "${PROJECT_TYPE}" = "extension" ]; then
