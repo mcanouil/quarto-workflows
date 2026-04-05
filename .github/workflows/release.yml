@@ -725,6 +725,7 @@ jobs:
           done < <(find release_assets -type f -print0)
 
           PREVIOUS_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
+          [[ "${PREVIOUS_TAG}" == "null" || -z "${PREVIOUS_TAG}" ]] && PREVIOUS_TAG=""
           GENERATE_NOTES_PAYLOAD=$(jq -n \
             --arg tag "${VERSION}" \
             --arg previous "${PREVIOUS_TAG}" \
