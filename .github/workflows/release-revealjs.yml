@@ -51,6 +51,9 @@ jobs:
       release_notes: ${{ steps.bump-version.outputs.release_notes }}
 
     steps:
+      - name: Deprecation notice
+        run: echo "::warning::This workflow is deprecated. Please switch to 'mcanouil/quarto-workflows/.github/workflows/release.yml' which auto-detects the project type."
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
