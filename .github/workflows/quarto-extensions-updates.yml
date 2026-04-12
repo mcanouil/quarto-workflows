@@ -1,0 +1,35 @@
+name: Quarto Extensions Updates
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 00 12 1 * *
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  quarto-extensions-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Git User
+        uses: ./.github/actions/setup-git-user
+        id: setup-git-user
+        with:
+          gh-app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+
+      - name: Setup Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Update Quarto extensions
+        uses: mcanouil/quarto-extensions-updater@v1
+        with:
+          github-token: ${{ steps.setup-git-user.outputs.token }}
+          pr-labels: "Type: Dependencies :arrow_up:"
