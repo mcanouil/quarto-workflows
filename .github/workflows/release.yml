@@ -585,7 +585,7 @@ jobs:
 
       - name: Upload pages artifact
         id: upload-artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: "${{ steps.detect-project-dir.outputs.output_directory }}"
 
