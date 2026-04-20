@@ -481,7 +481,7 @@ jobs:
 
       - name: Set up Julia
         if: ${{ steps.inspect.outputs.need_julia == 'true' }}
-        uses: julia-actions/setup-julia@v2
+        uses: julia-actions/setup-julia@v3
 
       - name: Install Julia dependencies
         if: ${{ steps.inspect.outputs.need_julia == 'true' }}

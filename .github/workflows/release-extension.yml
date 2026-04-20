@@ -327,7 +327,7 @@ jobs:
 
       - name: Set up Julia
         if: ${{ inputs.julia }}
-        uses: julia-actions/setup-julia@v2
+        uses: julia-actions/setup-julia@v3
 
       - name: Install Julia dependencies
         if: ${{ inputs.julia }}
