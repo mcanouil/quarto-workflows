@@ -17,6 +17,7 @@ Key features include:
 - **Auto-detection**: Output formats, engines (R/Python/Julia), TinyTeX, and slide-to-PDF needs are detected automatically from `.qmd` files.
 - **Project type detection**: Semantic versioning for extensions (repos with `_extensions/`), date-based versioning for presentations.
 - **Project directory detection**: Renders from `docs/` when `docs/_quarto.yml` exists, otherwise from the repository root.
+- **Quarto project type**: The project type and output directory are read from `quarto inspect`, so `website` and `book` projects (and any custom `output-dir`) are deployed from the directory Quarto reports. Non-default projects render as a whole project, while default projects render each detected format individually.
 - **Extension assets**: Packages `_extensions/` as `{name}-v{version}.tar.gz` and `.zip` release assets.
 - **Multi-format rendering**: Renders each detected format individually via `quarto render --to`.
 - **Slide-to-PDF conversion**: Automatic PDF generation using DeckTape for custom Reveal.js format extensions and presentations.

@@ -266,27 +266,40 @@ jobs:
         run: |
           if [ -f "docs/_quarto.yml" ]; then
             PROJECT_DIR="docs"
-            OUTPUT_DIRECTORY="docs/_site"
             echo "Using docs/ as project directory"
           else
             PROJECT_DIR="."
-            OUTPUT_DIRECTORY="_site"
             echo "Using root as project directory"
+          fi
 
-            # Create or update _quarto.yml
-            if [ ! -f "_quarto.yml" ]; then
-              echo "project:" > _quarto.yml
-              echo "  output-dir: ${OUTPUT_DIRECTORY}" >> _quarto.yml
-            else
-              echo "Existing _quarto.yml found, merging configuration..."
-              yq eval ".project.output-dir = \"${OUTPUT_DIRECTORY}\"" -i _quarto.yml
+          # Read project type and output directory from Quarto (resolves defaults)
+          INSPECT_JSON=$(quarto inspect "${PROJECT_DIR}" 2>/dev/null || echo '{}')
+          QUARTO_PROJECT_TYPE=$(echo "${INSPECT_JSON}" | jq -r '.config.project.type // "default"')
+          OUTPUT_DIR=$(echo "${INSPECT_JSON}" | jq -r '.config.project["output-dir"] // empty')
+
+          # Default project with no output-dir: fall back to _site and create a
+          # minimal _quarto.yml only when none exists. Never overwrite existing config.
+          if [ -z "${OUTPUT_DIR}" ]; then
+            OUTPUT_DIR="_site"
+            if [ ! -f "${PROJECT_DIR}/_quarto.yml" ]; then
+              printf 'project:\n  output-dir: %s\n' "${OUTPUT_DIR}" > "${PROJECT_DIR}/_quarto.yml"
             fi
           fi
-          echo "Updated _quarto.yml:"
+
+          if [ "${PROJECT_DIR}" = "docs" ]; then
+            OUTPUT_DIRECTORY="docs/${OUTPUT_DIR}"
+          else
+            OUTPUT_DIRECTORY="${OUTPUT_DIR}"
+          fi
+
+          echo "Quarto project type: ${QUARTO_PROJECT_TYPE}"
+          echo "Output directory: ${OUTPUT_DIRECTORY}"
+          echo "_quarto.yml:"
           cat "${PROJECT_DIR}/_quarto.yml"
           {
             echo "project_dir=${PROJECT_DIR}"
             echo "output_directory=${OUTPUT_DIRECTORY}"
+            echo "quarto_project_type=${QUARTO_PROJECT_TYPE}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Auto-detect formats and engines
@@ -508,6 +521,7 @@ jobs:
         env:
           PROJECT_DIR: ${{ steps.detect-project-dir.outputs.project_dir }}
           OUTPUT_DIRECTORY: ${{ steps.detect-project-dir.outputs.output_directory }}
+          QUARTO_PROJECT_TYPE: ${{ steps.detect-project-dir.outputs.quarto_project_type }}
           FORMATS: ${{ steps.inspect.outputs.formats }}
           NEED_PYTHON: ${{ steps.inspect.outputs.need_python }}
           NEED_DECKTAPE: ${{ steps.inspect.outputs.need_decktape }}
@@ -545,8 +559,13 @@ jobs:
             export QUARTO_LOG_LEVEL=DEBUG
           fi
 
-          # Render each format individually
-          if [ -n "${FORMATS}" ]; then
+          # Non-default projects (website/book/...) render as a whole project.
+          # Default projects render each detected format individually.
+          if [ "${QUARTO_PROJECT_TYPE}" != "default" ]; then
+            echo "::group::Rendering project (${QUARTO_PROJECT_TYPE})"
+            quarto render "${PROJECT_DIR}"
+            echo "::endgroup::"
+          elif [ -n "${FORMATS}" ]; then
             for format in ${FORMATS}; do
               echo "::group::Rendering ${format}"
               quarto render "${PROJECT_DIR}" --to "${format}"
