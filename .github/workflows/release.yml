@@ -516,6 +516,53 @@ jobs:
           sparse-checkout-cone-mode: false
           path: workflows
 
+      - name: Exclude CHANGELOG.md from render
+        env:
+          PROJECT_DIR: ${{ steps.detect-project-dir.outputs.project_dir }}
+        shell: bash
+        run: |
+          QUARTO_YML="${PROJECT_DIR}/_quarto.yml"
+          if [ ! -f "${PROJECT_DIR}/CHANGELOG.md" ]; then
+            echo "No CHANGELOG.md in ${PROJECT_DIR}, nothing to exclude."
+            exit 0
+          fi
+          if [ ! -f "${QUARTO_YML}" ]; then
+            echo "No ${QUARTO_YML}, nothing to exclude."
+            exit 0
+          fi
+
+          if yq eval '.project.render' "${QUARTO_YML}" | grep -q "null"; then
+            # No render targets: rebuild the default input set minus CHANGELOG.md.
+            # An exclusion-only list would render nothing, so we list includes explicitly.
+            mapfile -t INPUTS < <(quarto inspect "${PROJECT_DIR}" | jq -r '.files.input[]')
+            RENDER=()
+            for f in "${INPUTS[@]}"; do
+              rel=$(realpath --relative-to="${PROJECT_DIR}" "${f}")
+              if [ "${rel}" = "CHANGELOG.md" ]; then
+                continue
+              fi
+              RENDER+=("${rel}")
+            done
+            # Only write render targets when inputs were detected; an empty list
+            # would render nothing, so leave _quarto.yml untouched in that case.
+            if [ "${#RENDER[@]}" -gt 0 ]; then
+              yq eval '.project.render = []' -i "${QUARTO_YML}"
+              for rel in "${RENDER[@]}"; do
+                yq eval ".project.render += [\"${rel}\"]" -i "${QUARTO_YML}"
+              done
+            else
+              echo "No inputs detected from quarto inspect; leaving render targets unchanged."
+            fi
+          else
+            # Render targets already defined: append the exclusion if not present.
+            if ! yq eval '.project.render[] | select(. == "!CHANGELOG.md")' "${QUARTO_YML}" | grep -q "!CHANGELOG.md"; then
+              yq eval '.project.render += ["!CHANGELOG.md"]' -i "${QUARTO_YML}"
+            fi
+          fi
+
+          echo "Render targets after CHANGELOG.md exclusion:"
+          cat "${QUARTO_YML}"
+
       - name: Render Quarto Project
         id: render-quarto
         env:
