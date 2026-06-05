@@ -41,6 +41,7 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
   sed "s/el.parentElement.parentElement.parentElement;/el.parentElement.parentElement.parentElement.parentElement;/g;" "${SLIDES_PATH}" > "${SLIDES_PATH}.decktape.html"
 
   npx -y decktape reveal \
+    --load-pause 2000 \
     --chrome-arg="--no-sandbox" \
     --chrome-arg="--disable-setuid-sandbox" \
     --size "1280x640" \
