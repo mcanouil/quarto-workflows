@@ -15,7 +15,7 @@ It auto-detects output formats, language runtimes, and project type via `quarto 
 Key features include:
 
 - **Auto-detection**: Output formats, engines (R/Python/Julia), TinyTeX, and slide-to-PDF needs are detected automatically from `.qmd` files.
-- **Project type detection**: Semantic versioning for extensions (repos with `_extensions/`), date-based versioning for presentations.
+- **Repo type detection**: A repo is treated as an extension when it owns the manifest derived from its name (`owner/quarto-<name>` then `_extensions/<name>/_extension.yml`); such repos use semantic versioning. Every other repo is a project and uses date-based versioning, so a project that merely installs extensions as dependencies is not mistaken for one. Set the `repo-type` input to `extension` or `project` to override the detection.
 - **Project directory detection**: Renders from `docs/` when `docs/_quarto.yml` exists, otherwise from the repository root.
 - **Quarto project type**: The project type and output directory are read from `quarto inspect`, so `website` and `book` projects (and any custom `output-dir`) are deployed from the directory Quarto reports. Non-default projects render as a whole project, while default projects render each detected format individually.
 - **Extension assets**: Packages `_extensions/` as `{name}-v{version}.tar.gz` and `.zip` release assets.
@@ -25,11 +25,12 @@ Key features include:
 
 #### Inputs
 
-| Input       | Default     | Description                                                                                       |
-| ----------- | ----------- | ------------------------------------------------------------------------------------------------- |
-| `version`   | `"minor"`   | Version bump type (`patch`/`minor`/`major`). Used for extensions only; ignored for presentations. |
-| `quarto`    | `"release"` | Quarto version to install (`release` or `pre-release`).                                           |
-| `gh-app-id` |             | GitHub App ID for authentication (optional).                                                      |
+| Input       | Default     | Description                                                                                         |
+| ----------- | ----------- | --------------------------------------------------------------------------------------------------- |
+| `version`   | `"minor"`   | Version bump type (`patch`/`minor`/`major`). Used for extensions only; ignored for projects.        |
+| `repo-type` | `"auto"`    | Repo type (`auto`/`extension`/`project`). `auto` detects from the repo name and owned manifest.     |
+| `quarto`    | `"release"` | Quarto version to install (`release` or `pre-release`).                                             |
+| `gh-app-id` |             | GitHub App ID for authentication (optional).                                                        |
 
 #### Secrets
 
@@ -45,8 +46,8 @@ A `GH_TOKEN` secret (personal access token) can also be provided as an override.
 
 #### Example
 
-The `version` input is only relevant for extension repos (repos with `_extensions/`).
-For presentations, it is ignored and date-based versioning is used automatically.
+The `version` input is only relevant for extension repos (repos that own a matching `_extensions/<name>/_extension.yml`).
+For projects, it is ignored and date-based versioning is used automatically.
 
 ```yaml
 name: Release

@@ -15,6 +15,11 @@ on:
         required: false
         default: "minor"
         type: string
+      repo-type:
+        description: "Repo type (auto/extension/project) - 'auto' detects from the repo name and owned manifest"
+        required: false
+        default: "auto"
+        type: string
       quarto:
         description: "Quarto version"
         required: false
@@ -45,7 +50,7 @@ jobs:
       release_title: ${{ steps.bump-version.outputs.release_title }}
       release_notes: ${{ steps.bump-version.outputs.release_notes }}
       summary: ${{ steps.bump-version.outputs.summary }}
-      project_type: ${{ steps.detect-project.outputs.project_type }}
+      repo_type: ${{ steps.detect-project.outputs.repo_type }}
       extension_name: ${{ steps.detect-project.outputs.extension_name }}
 
     steps:
@@ -62,22 +67,61 @@ jobs:
 
       - name: Detect project type
         id: detect-project
+        env:
+          REQUESTED_TYPE: ${{ inputs.repo-type }}
         shell: bash
         run: |
           REPO="${GITHUB_REPOSITORY}"
           PREFIX="${GITHUB_REPOSITORY_OWNER}/quarto-"
-          if [ -d "_extensions" ] && ls -d _extensions/*/ > /dev/null 2>&1; then
-            PROJECT_TYPE="extension"
-            EXTENSION="${REPO#${PREFIX}}"
-            EXTENSION=${EXTENSION#revealjs-}
-          else
-            PROJECT_TYPE="presentation"
-            EXTENSION=""
+
+          # Derive the owned extension name from the repo name
+          # (owner/quarto-<name> -> _extensions/<name>/_extension.yml). A project
+          # that merely USES extensions installs third-party deps under other
+          # subdir names, so directory presence alone is not enough.
+          BASE="${REPO#"${PREFIX}"}"
+          EXTENSION=""
+          if [ "${BASE}" != "${REPO}" ]; then
+            for cand in "${BASE#revealjs-}" "${BASE}"; do
+              if [ -f "_extensions/${cand}/_extension.yml" ]; then
+                EXTENSION="${cand}"
+                break
+              fi
+            done
           fi
-          echo "Project type: ${PROJECT_TYPE}"
+
+          case "${REQUESTED_TYPE}" in
+            auto)
+              if [ -n "${EXTENSION}" ]; then
+                REPO_TYPE="extension"
+              else
+                REPO_TYPE="project"
+                if [ -d "_extensions" ]; then
+                  echo "Found _extensions/ but no owned manifest for '${BASE}'; treating as project."
+                fi
+              fi
+              ;;
+            extension)
+              if [ -z "${EXTENSION}" ]; then
+                echo "::error::repo-type='extension' but no owned manifest _extensions/<name>/_extension.yml was found for '${BASE}'"
+                exit 1
+              fi
+              REPO_TYPE="extension"
+              ;;
+            project)
+              REPO_TYPE="project"
+              EXTENSION=""
+              ;;
+            *)
+              echo "::error::Invalid repo-type '${REQUESTED_TYPE}' (expected auto/extension/project)"
+              exit 1
+              ;;
+          esac
+
+          echo "Requested repo type: ${REQUESTED_TYPE}"
+          echo "Repo type: ${REPO_TYPE}"
           echo "Extension name: ${EXTENSION}"
           {
-            echo "project_type=${PROJECT_TYPE}"
+            echo "repo_type=${REPO_TYPE}"
             echo "extension_name=${EXTENSION}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -85,7 +129,7 @@ jobs:
         id: bump-version
         env:
           GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
-          PROJECT_TYPE: ${{ steps.detect-project.outputs.project_type }}
+          REPO_TYPE: ${{ steps.detect-project.outputs.repo_type }}
           EXTENSION: ${{ steps.detect-project.outputs.extension_name }}
         shell: bash
         run: |
@@ -98,12 +142,16 @@ jobs:
 
           DATE=$(date +%Y-%m-%d)
 
-          if [ "${PROJECT_TYPE}" = "extension" ]; then
+          if [ "${REPO_TYPE}" = "extension" ]; then
             # Semantic versioning for extensions
             MANIFEST="_extensions/${EXTENSION}/_extension.yml"
             echo "Manifest: ${MANIFEST}"
             CURRENT_VERSION=$(grep "^version:" "${MANIFEST}" | sed 's/version: //;s/"//g')
             echo "Current Version: ${CURRENT_VERSION}"
+            if [ -z "${CURRENT_VERSION}" ]; then
+              echo "::error::No 'version:' field found in ${MANIFEST}"
+              exit 1
+            fi
             MAJOR=$(echo "${CURRENT_VERSION}" | cut -d. -f1)
             MINOR=$(echo "${CURRENT_VERSION}" | cut -d. -f2)
             PATCH=$(echo "${CURRENT_VERSION}" | cut -d. -f3)
@@ -141,7 +189,7 @@ jobs:
             RELEASE_TITLE=${EXTENSION^^}
             RELEASE_TITLE="${RELEASE_TITLE//-/ } ${VERSION}"
           else
-            # Date-based versioning for presentations
+            # Date-based versioning for projects
             CURRENT_DATE=$(date +%Y-%m-%d)
             PREV_DATE=$(grep '^date-released:' CITATION.cff | awk '{print $2}' | tr -d '"')
             VERSION=$(grep '^version:' CITATION.cff | awk '{print $2}')
@@ -187,7 +235,7 @@ jobs:
           SUMMARY="## Version Bump\n\n"
           SUMMARY+="| Field | Value |\n"
           SUMMARY+="|-------|--------|\n"
-          if [ "${PROJECT_TYPE}" = "extension" ]; then
+          if [ "${REPO_TYPE}" = "extension" ]; then
             SUMMARY+="| Extension | \`${EXTENSION}\` |\n"
             SUMMARY+="| Previous Version | \`${CURRENT_VERSION}\` |\n"
             SUMMARY+="| New Version | \`${VERSION}\` |\n"
@@ -221,7 +269,7 @@ jobs:
 
     env:
       QUARTOVERSION: ${{ inputs.quarto }}
-      PROJECT_TYPE: ${{ needs.bump-version.outputs.project_type }}
+      REPO_TYPE: ${{ needs.bump-version.outputs.repo_type }}
 
     outputs:
       gh_pages_url: ${{ steps.deployment.outputs.page_url }}
@@ -373,7 +421,7 @@ jobs:
 
           # Derive decktape need from formats and project type
           NEED_DECKTAPE=false
-          if [ "${PROJECT_TYPE}" = "presentation" ]; then
+          if [ "${REPO_TYPE}" = "project" ]; then
             if echo "${FORMATS}" | grep -q "revealjs"; then
               NEED_DECKTAPE=true
             fi
@@ -569,6 +617,7 @@ jobs:
           PROJECT_DIR: ${{ steps.detect-project-dir.outputs.project_dir }}
           OUTPUT_DIRECTORY: ${{ steps.detect-project-dir.outputs.output_directory }}
           QUARTO_PROJECT_TYPE: ${{ steps.detect-project-dir.outputs.quarto_project_type }}
+          REPO_TYPE: ${{ needs.bump-version.outputs.repo_type }}
           FORMATS: ${{ steps.inspect.outputs.formats }}
           NEED_PYTHON: ${{ steps.inspect.outputs.need_python }}
           NEED_DECKTAPE: ${{ steps.inspect.outputs.need_decktape }}
@@ -628,7 +677,7 @@ jobs:
           tar -czf gh-pages.tar.gz -C "${OUTPUT_DIRECTORY}" .
 
           # Package _extensions/ if present (named as {extension}-v{version}.tar.gz and .zip)
-          if [ -d "_extensions" ]; then
+          if [ "${REPO_TYPE}" = "extension" ] && [ -d "_extensions" ]; then
             ASSET_NAME="${EXTENSION_NAME}-v${VERSION}"
             tar -czf "${ASSET_NAME}.tar.gz" _extensions/
             zip -qr "${ASSET_NAME}.zip" _extensions/
@@ -782,7 +831,7 @@ jobs:
           VERSION: ${{ needs.bump-version.outputs.version }}
           RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
           RELEASE_NOTES: ${{ needs.bump-version.outputs.release_notes }}
-          PROJECT_TYPE: ${{ needs.bump-version.outputs.project_type }}
+          REPO_TYPE: ${{ needs.bump-version.outputs.repo_type }}
         shell: bash
         run: |
           assets=()
@@ -802,7 +851,7 @@ jobs:
             --jq '.body' 2>/dev/null) || AUTO_NOTES=""
 
           {
-            if [ "${PROJECT_TYPE}" = "extension" ]; then
+            if [ "${REPO_TYPE}" = "extension" ]; then
               echo "## Installation"
               echo ""
               echo '```bash'
@@ -832,7 +881,7 @@ jobs:
           VERSION: ${{ needs.bump-version.outputs.version }}
           BUMP_SUMMARY: ${{ needs.bump-version.outputs.summary }}
           DEPLOY_SUMMARY: ${{ needs.deploy.outputs.summary }}
-          PROJECT_TYPE: ${{ needs.bump-version.outputs.project_type }}
+          REPO_TYPE: ${{ needs.bump-version.outputs.repo_type }}
           EXTENSION: ${{ needs.bump-version.outputs.extension_name }}
         shell: bash
         run: |
@@ -841,12 +890,12 @@ jobs:
             echo ""
             echo "*Automated release completed successfully*"
             echo ""
-            if [ "${PROJECT_TYPE}" = "extension" ]; then
+            if [ "${REPO_TYPE}" = "extension" ]; then
               echo "### Extension Details"
               echo "- **Extension Name**: \`${EXTENSION}\`"
               echo "- **Version**: \`${VERSION}\`"
             else
-              echo "### Presentation Details"
+              echo "### Project Details"
               echo "- **Version**: \`${VERSION}\`"
             fi
             echo ""
