@@ -55,7 +55,7 @@ jobs:
         run: echo "::warning::This workflow is deprecated. Please switch to 'mcanouil/quarto-workflows/.github/workflows/release.yml' which auto-detects the project type."
 
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Git User
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
@@ -148,7 +148,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Git User
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
@@ -271,7 +271,7 @@ jobs:
           tinytex: false
 
       - name: Checkout repository with sparse checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: mcanouil/quarto-workflows
           sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
@@ -376,7 +376,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Git User
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
