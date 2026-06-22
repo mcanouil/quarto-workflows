@@ -55,7 +55,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Git User
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
@@ -277,7 +277,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Check and fix Google Chrome
         shell: bash
@@ -557,7 +557,7 @@ jobs:
 
       - name: Checkout slides-to-pdf script
         if: ${{ steps.inspect.outputs.need_decktape == 'true' }}
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: mcanouil/quarto-workflows
           sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
@@ -802,7 +802,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Git User
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
