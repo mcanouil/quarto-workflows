@@ -45,6 +45,7 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
     --chrome-arg="--no-sandbox" \
     --chrome-arg="--disable-setuid-sandbox" \
     --size "1280x640" \
+    --no-fragments \
     --screenshots \
     --screenshots-format png \
     --screenshots-directory . \
