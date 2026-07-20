@@ -553,7 +553,7 @@ jobs:
 
       - name: Set up Node.js
         if: ${{ steps.inspect.outputs.need_decktape == 'true' }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
 
       - name: Checkout slides-to-pdf script
         if: ${{ steps.inspect.outputs.need_decktape == 'true' }}
