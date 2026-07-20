@@ -516,13 +516,13 @@ jobs:
 
       - name: Set up Python (from pyproject.toml)
         if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.python == 'true' }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version-file: "pyproject.toml"
 
       - name: Set up Python (default)
         if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.python == 'false' }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
 
       - name: Install Python dependencies
         if: ${{ steps.inspect.outputs.need_python == 'true' }}
