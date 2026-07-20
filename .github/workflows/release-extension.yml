@@ -301,13 +301,13 @@ jobs:
 
       - name: Set up Python
         if: ${{ inputs.python && steps.check-python-env.outputs.python == 'true' }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version-file: "pyproject.toml"
 
       - name: Set up Python
         if: ${{ inputs.python && steps.check-python-env.outputs.python == 'false' }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
 
       - name: Install Python dependencies
         if: ${{ inputs.python }}
