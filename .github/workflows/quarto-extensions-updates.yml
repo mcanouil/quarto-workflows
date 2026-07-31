@@ -10,6 +10,9 @@ on:
     - cron: 00 12 1 * *
   workflow_call:
     secrets:
+      GH_TOKEN:
+        description: "GitHub token"
+        required: false
       APP_KEY:
         description: "GitHub App private key"
         required: false
@@ -43,6 +46,7 @@ jobs:
         with:
           gh-app-id: ${{ inputs.gh-app-id || vars.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@v2
