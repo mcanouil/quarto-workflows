@@ -66,7 +66,7 @@ runs:
               echo "::warning::quarto inspect failed for '${qmd_file}'; its formats are not accounted for"
               continue
             fi
-            FILE_FORMATS="${FILE_FORMATS} $(echo "${FILE_JSON}" | jq -r '.formats | keys[]' | xargs)"
+            FILE_FORMATS="${FILE_FORMATS} $(echo "${FILE_JSON}" | jq -r '.formats // {} | keys[]' | xargs)"
           done
           FORMATS=$(echo "${FILE_FORMATS}" | tr ' ' '\n' | sed '/^$/d' | sort -u | xargs)
         else
@@ -76,7 +76,7 @@ runs:
             exit 1
           fi
           ENGINES=$(echo "${FILE_JSON}" | jq -r '.engines[]?' | sort -u | xargs)
-          FORMATS=$(echo "${FILE_JSON}" | jq -r '.formats | keys[]' | sort -u | xargs)
+          FORMATS=$(echo "${FILE_JSON}" | jq -r '.formats // {} | keys[]' | sort -u | xargs)
         fi
 
         NEED_R=false
@@ -143,18 +143,15 @@ runs:
 
         RENV_DIR=$(locate_manifest "renv.lock")
         PYPROJECT_DIR=$(locate_manifest "pyproject.toml")
-        UV_DIR=$(locate_manifest "uv.lock")
         JULIA_DIR=$(locate_manifest "Project.toml")
 
         echo "renv.lock: ${RENV_DIR:-not found}"
         echo "pyproject.toml: ${PYPROJECT_DIR:-not found}"
-        echo "uv.lock: ${UV_DIR:-not found}"
         echo "Project.toml: ${JULIA_DIR:-not found}"
 
         {
           echo "renv-dir=${RENV_DIR}"
           echo "pyproject-dir=${PYPROJECT_DIR}"
-          echo "uv-dir=${UV_DIR}"
           echo "julia-dir=${JULIA_DIR}"
         } >> "${GITHUB_OUTPUT}"
 
@@ -195,12 +192,14 @@ runs:
       shell: bash
       run: Rscript -e 'install.packages(c("knitr", "rmarkdown"))'
 
+    # The default cache-dependency-glob already covers uv.lock and
+    # pyproject.toml wherever they sit, and it is relative to the working
+    # directory, which the located manifest path is not.
     - name: Install uv
       if: ${{ steps.inspect.outputs.need-python == 'true' }}
       uses: astral-sh/setup-uv@v7
       with:
         enable-cache: true
-        cache-dependency-glob: ${{ steps.locate.outputs.uv-dir != '' && format('{0}/uv.lock', steps.locate.outputs.uv-dir) || '**/uv.lock' }}
 
     - name: Set up Python (from pyproject.toml)
       if: ${{ steps.inspect.outputs.need-python == 'true' && steps.locate.outputs.pyproject-dir != '' }}
