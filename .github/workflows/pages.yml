@@ -1,0 +1,163 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
+name: Pages
+
+# Publishes the documentation website under docs/, which is what a repository
+# serves from GitHub Pages once it has one: it takes the slot the rendered
+# example.qmd or template.qmd used to fill. The Release workflow calls this
+# after tagging, and it is dispatchable on its own. Pull requests render the
+# site as a check, from their own head, but never deploy.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Commit or ref to build. Defaults to the latest version tag."
+        type: string
+        required: false
+        default: ""
+      use-main-as-release:
+        description: "Render from the triggering ref instead of the latest version tag."
+        type: boolean
+        required: false
+        default: false
+      quarto:
+        description: "Quarto version"
+        type: string
+        required: false
+        default: "release"
+  workflow_dispatch:
+    inputs:
+      use-main-as-release:
+        description: "Render from the default branch instead of the latest version tag"
+        type: boolean
+        default: false
+      quarto:
+        type: choice
+        description: "Quarto version"
+        default: "release"
+        options:
+          - "release"
+          - "pre-release"
+
+# Only the deploy job touches Pages, and it raises its own permissions.
+permissions:
+  contents: read
+
+# Pages accepts one deployment at a time, so queue rather than cancel. Pull
+# requests never deploy, so they get a per-ref group and can run in parallel.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('docs-pr-{0}', github.ref) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Render site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # The whole history, so the latest version tag can be resolved below.
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      # A pull request renders its own head, so a broken page is caught before
+      # it lands. Everything else renders the released source, so the published
+      # site describes the version users can actually install.
+      - name: Resolve the ref to render
+        id: resolve-ref
+        if: ${{ inputs.ref == '' && !inputs.use-main-as-release && github.event_name != 'pull_request' }}
+        shell: bash
+        run: |
+          LATEST_TAG=$(git tag -l --sort=-v:refname '[0-9]*' | head -n 1)
+          if [ -z "${LATEST_TAG}" ]; then
+            echo "::warning::No version tags found; rendering the triggering ref instead."
+            exit 0
+          fi
+          echo "Latest tag: ${LATEST_TAG}"
+          git checkout "${LATEST_TAG}"
+
+      - name: Set up Quarto CLI
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: ${{ inputs.quarto || 'release' }}
+
+      # Quarto builds its extension registry while reading _quarto.yml, before
+      # any pre-render script runs, and it does not follow symlinks. A shortcode
+      # contributed by the repository's own extension is therefore only found
+      # when a real copy is already on disk, so the mirror is refreshed here
+      # rather than left to whatever was last committed.
+      - name: Sync the repository's extension into docs/
+        shell: bash
+        run: |
+          if [ -x "docs/_scripts/sync-extension.sh" ]; then
+            ./docs/_scripts/sync-extension.sh
+          elif [ -f "docs/_scripts/sync-extension.sh" ]; then
+            bash docs/_scripts/sync-extension.sh
+          else
+            echo "No docs/_scripts/sync-extension.sh; nothing to sync."
+          fi
+
+      - name: Render site
+        run: quarto render docs
+
+      - name: Upload site artifact
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: docs/_site
+          retention-days: 1
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' }}
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Download site artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: site
+          path: _site
+
+      - name: Prepare site for deployment
+        run: touch _site/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: "./_site"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+      - name: Add deployment summary
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        shell: bash
+        run: |
+          {
+            echo "## Documentation deploy"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|--------|"
+            echo "| GitHub Pages URL | [${PAGE_URL}](${PAGE_URL}) |"
+          } >> "${GITHUB_STEP_SUMMARY}"
