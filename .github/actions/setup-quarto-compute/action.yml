@@ -1,0 +1,250 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
+name: Setup Quarto Compute
+description: Detect the engines and formats a Quarto project uses, then install only the runtimes it needs.
+
+# Quarto must already be installed: detection shells out to `quarto inspect`.
+# Extensions must already be on disk, since inspecting a project resolves them.
+
+inputs:
+  path:
+    description: "Quarto project directory or single document to inspect"
+    required: false
+    default: "."
+  chromium:
+    description: "Install Chrome libraries: 'auto' (only for LaTeX-bound formats), 'true', or 'false'"
+    required: false
+    default: "auto"
+
+outputs:
+  formats:
+    description: "Space-separated output formats detected across the project"
+    value: ${{ steps.inspect.outputs.formats }}
+  engines:
+    description: "Space-separated engines detected across the project"
+    value: ${{ steps.inspect.outputs.engines }}
+  need-r:
+    description: "Whether the knitr engine is used"
+    value: ${{ steps.inspect.outputs.need-r }}
+  need-python:
+    description: "Whether the jupyter engine is used"
+    value: ${{ steps.inspect.outputs.need-python }}
+  need-julia:
+    description: "Whether the julia engine is used"
+    value: ${{ steps.inspect.outputs.need-julia }}
+  need-tinytex:
+    description: "Whether a LaTeX-bound format is produced"
+    value: ${{ steps.inspect.outputs.need-tinytex }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect engines and formats
+      id: inspect
+      env:
+        INSPECT_PATH: ${{ inputs.path }}
+      shell: bash
+      run: |
+        if [ -d "${INSPECT_PATH}" ]; then
+          # Inspecting a project reports engines aggregated over every input,
+          # including .ipynb and .md, but reports no formats. Formats therefore
+          # come from a second pass over the .qmd inputs; .md files are skipped
+          # because they would contribute a spurious "html".
+          if ! PROJECT_JSON=$(quarto inspect "${INSPECT_PATH}" 2>&1); then
+            echo "::error::quarto inspect failed for '${INSPECT_PATH}'"
+            echo "${PROJECT_JSON}"
+            exit 1
+          fi
+          ENGINES=$(echo "${PROJECT_JSON}" | jq -r '.engines[]?' | sort -u | xargs)
+          INPUT_FILES=$(echo "${PROJECT_JSON}" | jq -r '.files.input[]? | select(endswith(".qmd"))')
+
+          FILE_FORMATS=""
+          for qmd_file in ${INPUT_FILES}; do
+            if ! FILE_JSON=$(quarto inspect "${qmd_file}" 2>&1); then
+              echo "::warning::quarto inspect failed for '${qmd_file}'; its formats are not accounted for"
+              continue
+            fi
+            FILE_FORMATS="${FILE_FORMATS} $(echo "${FILE_JSON}" | jq -r '.formats | keys[]' | xargs)"
+          done
+          FORMATS=$(echo "${FILE_FORMATS}" | tr ' ' '\n' | sed '/^$/d' | sort -u | xargs)
+        else
+          if ! FILE_JSON=$(quarto inspect "${INSPECT_PATH}" 2>&1); then
+            echo "::error::quarto inspect failed for '${INSPECT_PATH}'"
+            echo "${FILE_JSON}"
+            exit 1
+          fi
+          ENGINES=$(echo "${FILE_JSON}" | jq -r '.engines[]?' | sort -u | xargs)
+          FORMATS=$(echo "${FILE_JSON}" | jq -r '.formats | keys[]' | sort -u | xargs)
+        fi
+
+        NEED_R=false
+        NEED_PYTHON=false
+        NEED_JULIA=false
+        NEED_TINYTEX=false
+
+        if echo " ${ENGINES} " | grep -qF " knitr "; then
+          NEED_R=true
+        fi
+        if echo " ${ENGINES} " | grep -qF " jupyter "; then
+          NEED_PYTHON=true
+        fi
+        if echo " ${ENGINES} " | grep -qF " julia "; then
+          NEED_JULIA=true
+        fi
+
+        # Typst formats produce PDF without a TeX distribution, so they are not
+        # matched here.
+        for fmt in ${FORMATS}; do
+          case "${fmt}" in
+            *pdf*|*beamer*|*latex*) NEED_TINYTEX=true; break ;;
+          esac
+        done
+
+        echo "Detected formats: ${FORMATS}"
+        echo "Detected engines: ${ENGINES}"
+        echo "Need R: ${NEED_R}, Python: ${NEED_PYTHON}, Julia: ${NEED_JULIA}"
+        echo "Need TinyTeX: ${NEED_TINYTEX}"
+
+        {
+          echo "formats=${FORMATS}"
+          echo "engines=${ENGINES}"
+          echo "need-r=${NEED_R}"
+          echo "need-python=${NEED_PYTHON}"
+          echo "need-julia=${NEED_JULIA}"
+          echo "need-tinytex=${NEED_TINYTEX}"
+        } >> "${GITHUB_OUTPUT}"
+
+    # A documentation website lives under docs/ while the dependency manifests
+    # it renders with often stay at the repository root, so each manifest is
+    # looked up in the project directory first and the workspace second.
+    - name: Locate dependency manifests
+      id: locate
+      env:
+        INSPECT_PATH: ${{ inputs.path }}
+      shell: bash
+      run: |
+        if [ -d "${INSPECT_PATH}" ]; then
+          PROJECT_DIR="${INSPECT_PATH}"
+        else
+          PROJECT_DIR=$(dirname "${INSPECT_PATH}")
+        fi
+
+        locate_manifest() {
+          for dir in "${PROJECT_DIR}" "${GITHUB_WORKSPACE}"; do
+            if [ -f "${dir}/${1}" ]; then
+              printf '%s' "${dir}"
+              return 0
+            fi
+          done
+          printf ''
+        }
+
+        RENV_DIR=$(locate_manifest "renv.lock")
+        PYPROJECT_DIR=$(locate_manifest "pyproject.toml")
+        UV_DIR=$(locate_manifest "uv.lock")
+        JULIA_DIR=$(locate_manifest "Project.toml")
+
+        echo "renv.lock: ${RENV_DIR:-not found}"
+        echo "pyproject.toml: ${PYPROJECT_DIR:-not found}"
+        echo "uv.lock: ${UV_DIR:-not found}"
+        echo "Project.toml: ${JULIA_DIR:-not found}"
+
+        {
+          echo "renv-dir=${RENV_DIR}"
+          echo "pyproject-dir=${PYPROJECT_DIR}"
+          echo "uv-dir=${UV_DIR}"
+          echo "julia-dir=${JULIA_DIR}"
+        } >> "${GITHUB_OUTPUT}"
+
+    # Quarto shells out to Chrome to turn Mermaid and Graphviz diagrams into
+    # images, which is what a LaTeX-bound format needs; the runner ships Chrome
+    # but not always the libraries it links against.
+    - name: Check and fix Google Chrome
+      if: ${{ inputs.chromium == 'true' || (inputs.chromium == 'auto' && steps.inspect.outputs.need-tinytex == 'true') }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1
+        ldd /usr/bin/google-chrome | grep "not found" || echo "All Chrome dependencies satisfied."
+        google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null 2>&1
+        echo "Google Chrome is working properly."
+
+    - name: Install TinyTeX
+      if: ${{ steps.inspect.outputs.need-tinytex == 'true' }}
+      shell: bash
+      run: quarto install tinytex --update-path
+
+    - name: Set up R
+      if: ${{ steps.inspect.outputs.need-r == 'true' }}
+      uses: r-lib/actions/setup-r@v2
+      with:
+        # Binary packages from the public RStudio Package Manager, so the
+        # fallback install below does not compile from source.
+        use-public-rspm: true
+
+    - name: Install renv
+      if: ${{ steps.inspect.outputs.need-r == 'true' && steps.locate.outputs.renv-dir != '' }}
+      uses: r-lib/actions/setup-renv@v2
+      with:
+        working-directory: ${{ steps.locate.outputs.renv-dir }}
+
+    - name: Install R dependencies
+      if: ${{ steps.inspect.outputs.need-r == 'true' && steps.locate.outputs.renv-dir == '' }}
+      shell: bash
+      run: Rscript -e 'install.packages(c("knitr", "rmarkdown"))'
+
+    - name: Install uv
+      if: ${{ steps.inspect.outputs.need-python == 'true' }}
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        cache-dependency-glob: ${{ steps.locate.outputs.uv-dir != '' && format('{0}/uv.lock', steps.locate.outputs.uv-dir) || '**/uv.lock' }}
+
+    - name: Set up Python (from pyproject.toml)
+      if: ${{ steps.inspect.outputs.need-python == 'true' && steps.locate.outputs.pyproject-dir != '' }}
+      uses: actions/setup-python@v7
+      with:
+        python-version-file: ${{ steps.locate.outputs.pyproject-dir }}/pyproject.toml
+
+    - name: Set up Python (default)
+      if: ${{ steps.inspect.outputs.need-python == 'true' && steps.locate.outputs.pyproject-dir == '' }}
+      uses: actions/setup-python@v7
+
+    # The environment is exported rather than activated, so every later step
+    # renders with it on PATH without sourcing anything.
+    - name: Install Python dependencies
+      if: ${{ steps.inspect.outputs.need-python == 'true' }}
+      env:
+        PYPROJECT_DIR: ${{ steps.locate.outputs.pyproject-dir }}
+      shell: bash
+      run: |
+        if [ -n "${PYPROJECT_DIR}" ]; then
+          VENV_DIR="${PYPROJECT_DIR}"
+          uv sync --directory "${VENV_DIR}"
+        else
+          VENV_DIR="${GITHUB_WORKSPACE}"
+          uv init --directory "${VENV_DIR}" --no-package --vcs none --bare --no-readme --author-from none
+          uv venv --directory "${VENV_DIR}"
+          uv add --directory "${VENV_DIR}" jupyter papermill
+          uv sync --directory "${VENV_DIR}"
+        fi
+
+        VENV="$(cd "${VENV_DIR}" && pwd)/.venv"
+        echo "VIRTUAL_ENV=${VENV}" >> "${GITHUB_ENV}"
+        echo "${VENV}/bin" >> "${GITHUB_PATH}"
+
+    - name: Set up Julia
+      if: ${{ steps.inspect.outputs.need-julia == 'true' }}
+      uses: julia-actions/setup-julia@v3
+
+    - name: Install Julia dependencies
+      if: ${{ steps.inspect.outputs.need-julia == 'true' }}
+      env:
+        JULIA_DIR: ${{ steps.locate.outputs.julia-dir }}
+      shell: bash
+      run: |
+        PROJECT="${JULIA_DIR:-${GITHUB_WORKSPACE}}"
+        julia --project="${PROJECT}" -e 'using Pkg; Pkg.instantiate()'
+        julia --project="${PROJECT}" -e 'using Pkg; Pkg.add(["IJulia"])'
