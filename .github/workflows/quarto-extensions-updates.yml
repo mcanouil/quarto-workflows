@@ -1,9 +1,28 @@
 name: Quarto Extensions Updates
 
+# Runs on a schedule for this repository, and is callable by any repository that
+# wants the same behaviour. Extension repositories call it with
+# `scan-directories: docs`, because their documentation website keeps its own
+# dependencies (atelier, iconify, gitlink) under docs/_extensions/.
 on:
   workflow_dispatch:
   schedule:
     - cron: 00 12 1 * *
+  workflow_call:
+    secrets:
+      APP_KEY:
+        description: "GitHub App private key"
+        required: false
+    inputs:
+      scan-directories:
+        description: "Newline-separated directories to scan, in addition to the repository root"
+        required: false
+        default: ""
+        type: string
+      gh-app-id:
+        description: "GitHub App ID"
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref_name }}
@@ -19,10 +38,10 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Setup Git User
-        uses: ./.github/actions/setup-git-user
+        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
-          gh-app-id: ${{ vars.APP_ID }}
+          gh-app-id: ${{ inputs.gh-app-id || vars.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
 
       - name: Setup Quarto
@@ -33,3 +52,5 @@ jobs:
         with:
           github-token: ${{ steps.setup-git-user.outputs.token }}
           pr-labels: "Type: Dependencies :arrow_up:"
+          group-updates: true
+          scan-directories: ${{ inputs.scan-directories }}

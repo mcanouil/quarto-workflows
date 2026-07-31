@@ -52,6 +52,7 @@ jobs:
       summary: ${{ steps.bump-version.outputs.summary }}
       repo_type: ${{ steps.detect-project.outputs.repo_type }}
       extension_name: ${{ steps.detect-project.outputs.extension_name }}
+      has_docs: ${{ steps.detect-project.outputs.has_docs }}
 
     steps:
       - name: Checkout repository
@@ -117,12 +118,25 @@ jobs:
               ;;
           esac
 
+          # A documentation website under docs/ takes over GitHub Pages, and the
+          # Pages workflow deploys it from the release tag. The root
+          # project is then rendered as a check only, since example.qmd and
+          # template.qmd are starting points to copy rather than pages to
+          # publish.
+          if [ -f "docs/_quarto.yml" ]; then
+            HAS_DOCS="true"
+          else
+            HAS_DOCS="false"
+          fi
+
           echo "Requested repo type: ${REQUESTED_TYPE}"
           echo "Repo type: ${REPO_TYPE}"
           echo "Extension name: ${EXTENSION}"
+          echo "Documentation website: ${HAS_DOCS}"
           {
             echo "repo_type=${REPO_TYPE}"
             echo "extension_name=${EXTENSION}"
+            echo "has_docs=${HAS_DOCS}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Bump Version
@@ -263,16 +277,16 @@ jobs:
 
     needs: bump-version
 
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
+    # This job renders and packages; it never deploys. A job cannot drop its
+    # `environment` conditionally, and claiming `github-pages` while deploying
+    # nothing would record a deployment that never happened, so the deployment
+    # itself lives in publish-pages (no docs/) or deploy-pages (docs/) below.
     env:
       QUARTOVERSION: ${{ inputs.quarto }}
       REPO_TYPE: ${{ needs.bump-version.outputs.repo_type }}
+      HAS_DOCS: ${{ needs.bump-version.outputs.has_docs }}
 
     outputs:
-      gh_pages_url: ${{ steps.deployment.outputs.page_url }}
       summary: ${{ steps.deployment-summary.outputs.summary }}
 
     steps:
@@ -312,12 +326,13 @@ jobs:
         id: detect-project-dir
         shell: bash
         run: |
-          if [ -f "docs/_quarto.yml" ]; then
-            PROJECT_DIR="docs"
-            echo "Using docs/ as project directory"
-          else
-            PROJECT_DIR="."
-            echo "Using root as project directory"
+          # Always the repository root. A documentation website under docs/ is
+          # rendered and deployed by the Pages workflow instead, and the
+          # root project then serves as a render check only.
+          PROJECT_DIR="."
+          echo "Using root as project directory"
+          if [ "${HAS_DOCS}" = "true" ]; then
+            echo "docs/_quarto.yml found: the root project is rendered as a check and not deployed."
           fi
 
           # Read project type and output directory from Quarto (resolves defaults)
@@ -334,10 +349,20 @@ jobs:
             fi
           fi
 
-          if [ "${PROJECT_DIR}" = "docs" ]; then
-            OUTPUT_DIRECTORY="docs/${OUTPUT_DIR}"
-          else
-            OUTPUT_DIRECTORY="${OUTPUT_DIR}"
+          OUTPUT_DIRECTORY="${OUTPUT_DIR}"
+
+          # A documentation website is a Quarto project of its own, but the root
+          # project scan does not skip a subdirectory that has one. Left alone,
+          # every page under docs/ is rendered a second time here, without the
+          # configuration, theme, and extensions that make it work, and lands in
+          # the archive attached to the release. Exclude it, so this render is
+          # the example check it claims to be.
+          if [ "${HAS_DOCS}" = "true" ]; then
+            if [ "$(yq eval '.project.render' "${PROJECT_DIR}/_quarto.yml")" = "null" ]; then
+              yq eval -i '.project.render = ["*.qmd", "!docs/"]' "${PROJECT_DIR}/_quarto.yml"
+            elif ! yq eval '.project.render[] | select(. == "!docs/")' "${PROJECT_DIR}/_quarto.yml" | grep -q 'docs/'; then
+              yq eval -i '.project.render += ["!docs/"]' "${PROJECT_DIR}/_quarto.yml"
+            fi
           fi
 
           echo "Quarto project type: ${QUARTO_PROJECT_TYPE}"
@@ -673,8 +698,16 @@ jobs:
             echo "::endgroup::"
           fi
 
-          # Package rendered output
-          tar -czf gh-pages.tar.gz -C "${OUTPUT_DIRECTORY}" .
+          # Package rendered output. With a documentation website present this
+          # is the rendered example rather than the published site, so it is
+          # named for what it actually contains.
+          if [ "${HAS_DOCS}" = "true" ]; then
+            SITE_ARCHIVE="example-render.tar.gz"
+          else
+            SITE_ARCHIVE="gh-pages.tar.gz"
+          fi
+          tar -czf "${SITE_ARCHIVE}" -C "${OUTPUT_DIRECTORY}" .
+          echo "site_archive=${SITE_ARCHIVE}" >> "${GITHUB_OUTPUT}"
 
           # Package _extensions/ if present (named as {extension}-v{version}.tar.gz and .zip)
           if [ "${REPO_TYPE}" = "extension" ] && [ -d "_extensions" ]; then
@@ -695,18 +728,20 @@ jobs:
             echo "slides_assets_exists=false" >> "${GITHUB_OUTPUT}"
           fi
 
+      # Skipped when the repository has a documentation website: the deploy-pages
+      # job below publishes docs/ from the release tag instead, and the render
+      # above was only a check. Without one, the rendered output is staged here
+      # and publish-pages deploys it.
       - name: Configure GitHub Pages
+        if: ${{ env.HAS_DOCS != 'true' }}
         uses: actions/configure-pages@v6
 
       - name: Upload pages artifact
         id: upload-artifact
+        if: ${{ env.HAS_DOCS != 'true' }}
         uses: actions/upload-pages-artifact@v5
         with:
           path: "${{ steps.detect-project-dir.outputs.output_directory }}"
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
 
       - name: Upload release assets (slides + extensions)
         uses: actions/upload-artifact@v7
@@ -715,7 +750,7 @@ jobs:
           name: release-assets
           path: |
             ${{ steps.render-quarto.outputs.release_assets_path }}
-            gh-pages.tar.gz
+            ${{ steps.render-quarto.outputs.site_archive }}
             ${{ steps.render-quarto.outputs.extensions_asset_name }}.tar.gz
             ${{ steps.render-quarto.outputs.extensions_asset_name }}.zip
 
@@ -725,7 +760,7 @@ jobs:
         with:
           name: release-assets
           path: |
-            gh-pages.tar.gz
+            ${{ steps.render-quarto.outputs.site_archive }}
             ${{ steps.render-quarto.outputs.extensions_asset_name }}.tar.gz
             ${{ steps.render-quarto.outputs.extensions_asset_name }}.zip
 
@@ -736,7 +771,7 @@ jobs:
           name: release-assets
           path: |
             ${{ steps.render-quarto.outputs.release_assets_path }}
-            gh-pages.tar.gz
+            ${{ steps.render-quarto.outputs.site_archive }}
 
       - name: Upload release assets (default)
         uses: actions/upload-artifact@v7
@@ -744,7 +779,7 @@ jobs:
         with:
           name: release-assets
           path: |
-            gh-pages.tar.gz
+            ${{ steps.render-quarto.outputs.site_archive }}
 
       - name: Update template thumbnail
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
@@ -779,7 +814,6 @@ jobs:
       - name: Add deployment summary
         id: deployment-summary
         env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
           FORMATS: ${{ steps.inspect.outputs.formats }}
           ENGINES: ${{ steps.inspect.outputs.engines }}
         shell: bash
@@ -790,8 +824,51 @@ jobs:
           SUMMARY+="| Quarto Version | \`${QUARTOVERSION}\` |\n"
           SUMMARY+="| Output Formats | \`${FORMATS}\` |\n"
           SUMMARY+="| Engines | \`${ENGINES}\` |\n"
-          SUMMARY+="| GitHub Pages URL | [${PAGE_URL}](${PAGE_URL}) |\n"
+          if [ "${HAS_DOCS}" = "true" ]; then
+            SUMMARY+="| GitHub Pages | Deployed from \`docs/\` by the Pages workflow. |\n"
+          else
+            SUMMARY+="| GitHub Pages | Deployed by the Publish Pages job. |\n"
+          fi
           echo "summary=${SUMMARY}" >> "${GITHUB_OUTPUT}"
+
+  # A repository without docs/ publishes its rendered example or template to
+  # Pages, as it always has. The deployment sits in its own job so the
+  # github-pages environment is claimed only when something is deployed.
+  publish-pages:
+    runs-on: ubuntu-latest
+
+    needs:
+      - bump-version
+      - deploy
+
+    if: ${{ needs.bump-version.outputs.has_docs != 'true' }}
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+      - name: Add deployment summary
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        shell: bash
+        run: |
+          {
+            echo "## Pages deploy"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|--------|"
+            echo "| GitHub Pages URL | [${PAGE_URL}](${PAGE_URL}) |"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
   release:
     runs-on: ubuntu-latest
@@ -877,7 +954,6 @@ jobs:
 
       - name: Display workflow summary
         env:
-          GH_PAGES_URL: ${{ needs.deploy.outputs.gh_pages_url }}
           VERSION: ${{ needs.bump-version.outputs.version }}
           BUMP_SUMMARY: ${{ needs.bump-version.outputs.summary }}
           DEPLOY_SUMMARY: ${{ needs.deploy.outputs.summary }}
@@ -901,7 +977,9 @@ jobs:
             echo ""
             echo "### Links"
             echo "- [GitHub Release](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${VERSION})"
-            echo "- [Live Demo](${GH_PAGES_URL})"
+            # The Pages URL is written by whichever job deployed the site,
+            # publish-pages or the Pages workflow, both of which run beside this
+            # job rather than before it.
             echo ""
             echo "---"
             echo ""
@@ -910,3 +988,19 @@ jobs:
             echo -e "${DEPLOY_SUMMARY}"
             echo ""
           } >> "${GITHUB_STEP_SUMMARY}"
+
+  # Publishes the documentation website from the tag the release job just
+  # created, so the site describes the version users can install.
+  deploy-pages:
+    needs:
+      - bump-version
+      - release
+    if: ${{ needs.bump-version.outputs.has_docs == 'true' }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: mcanouil/quarto-workflows/.github/workflows/pages.yml@main
+    with:
+      ref: ${{ needs.bump-version.outputs.version }}
+      quarto: ${{ inputs.quarto }}
