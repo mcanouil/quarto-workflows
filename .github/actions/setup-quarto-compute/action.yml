@@ -162,10 +162,15 @@ runs:
       if: ${{ inputs.chromium == 'true' || (inputs.chromium == 'auto' && steps.inspect.outputs.need-tinytex == 'true') }}
       shell: bash
       run: |
+        if google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null 2>&1; then
+          echo "Google Chrome is working properly."
+          exit 0
+        fi
+
+        echo "Google Chrome failed to start; installing the libraries it links against."
         sudo apt-get update
-        sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1
-        ldd /usr/bin/google-chrome | grep "not found" || echo "All Chrome dependencies satisfied."
-        google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null 2>&1
+        sudo apt-get install -y --no-install-recommends libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1
+        google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null
         echo "Google Chrome is working properly."
 
     - name: Install TinyTeX
@@ -177,8 +182,8 @@ runs:
       if: ${{ steps.inspect.outputs.need-r == 'true' }}
       uses: r-lib/actions/setup-r@v2
       with:
-        # Binary packages from the public RStudio Package Manager, so the
-        # fallback install below does not compile from source.
+        # Binary packages from the public RStudio Package Manager, so neither
+        # install path below compiles from source.
         use-public-rspm: true
 
     - name: Install renv
@@ -189,54 +194,44 @@ runs:
 
     - name: Install R dependencies
       if: ${{ steps.inspect.outputs.need-r == 'true' && steps.locate.outputs.renv-dir == '' }}
-      shell: bash
-      run: Rscript -e 'install.packages(c("knitr", "rmarkdown"))'
+      uses: r-lib/actions/setup-r-dependencies@v2
+      with:
+        packages: any::knitr, any::rmarkdown
 
-    # The default cache-dependency-glob already covers uv.lock and
-    # pyproject.toml wherever they sit, and it is relative to the working
-    # directory, which the located manifest path is not.
+    # uv provisions the interpreter itself from `requires-python`, and
+    # `activate-environment` leaves the virtual environment on PATH, so every
+    # later step renders with it without sourcing anything. The default
+    # cache-dependency-glob already covers uv.lock and pyproject.toml wherever
+    # they sit.
     - name: Install uv
       if: ${{ steps.inspect.outputs.need-python == 'true' }}
       uses: astral-sh/setup-uv@v7
       with:
         enable-cache: true
+        activate-environment: true
+        working-directory: ${{ steps.locate.outputs.pyproject-dir || github.workspace }}
 
-    - name: Set up Python (from pyproject.toml)
-      if: ${{ steps.inspect.outputs.need-python == 'true' && steps.locate.outputs.pyproject-dir != '' }}
-      uses: actions/setup-python@v7
-      with:
-        python-version-file: ${{ steps.locate.outputs.pyproject-dir }}/pyproject.toml
-
-    - name: Set up Python (default)
-      if: ${{ steps.inspect.outputs.need-python == 'true' && steps.locate.outputs.pyproject-dir == '' }}
-      uses: actions/setup-python@v7
-
-    # The environment is exported rather than activated, so every later step
-    # renders with it on PATH without sourcing anything.
     - name: Install Python dependencies
       if: ${{ steps.inspect.outputs.need-python == 'true' }}
       env:
-        PYPROJECT_DIR: ${{ steps.locate.outputs.pyproject-dir }}
+        PYTHON_DIR: ${{ steps.locate.outputs.pyproject-dir || github.workspace }}
+        HAS_PYPROJECT: ${{ steps.locate.outputs.pyproject-dir != '' }}
       shell: bash
       run: |
-        if [ -n "${PYPROJECT_DIR}" ]; then
-          VENV_DIR="${PYPROJECT_DIR}"
-          uv sync --directory "${VENV_DIR}"
+        if [ "${HAS_PYPROJECT}" = "true" ]; then
+          uv sync --directory "${PYTHON_DIR}"
         else
-          VENV_DIR="${GITHUB_WORKSPACE}"
-          uv init --directory "${VENV_DIR}" --no-package --vcs none --bare --no-readme --author-from none
-          uv venv --directory "${VENV_DIR}"
-          uv add --directory "${VENV_DIR}" jupyter papermill
-          uv sync --directory "${VENV_DIR}"
+          uv init --directory "${PYTHON_DIR}" --no-package --vcs none --bare --no-readme --author-from none
+          uv add --directory "${PYTHON_DIR}" jupyter papermill
         fi
-
-        VENV="$(cd "${VENV_DIR}" && pwd)/.venv"
-        echo "VIRTUAL_ENV=${VENV}" >> "${GITHUB_ENV}"
-        echo "${VENV}/bin" >> "${GITHUB_PATH}"
 
     - name: Set up Julia
       if: ${{ steps.inspect.outputs.need-julia == 'true' }}
       uses: julia-actions/setup-julia@v3
+
+    - name: Cache Julia packages
+      if: ${{ steps.inspect.outputs.need-julia == 'true' }}
+      uses: julia-actions/cache@v3
 
     - name: Install Julia dependencies
       if: ${{ steps.inspect.outputs.need-julia == 'true' }}
