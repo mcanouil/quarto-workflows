@@ -761,8 +761,11 @@ jobs:
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
+      # The thumbnail is not part of the release being cut, so a failure here
+      # reports itself and lets the tag, the release, and the deployment go out.
       - name: Update template thumbnail
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.refresh-git-user.outputs.token }}
           OUTPUT_DIRECTORY: ${{ steps.detect-project-dir.outputs.output_directory }}
@@ -793,12 +796,21 @@ jobs:
             if ! git diff --cached --quiet; then
               git commit -m "${COMMIT}"
               git push --force origin "${BRANCH}"
-              PR_URL=$(gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:" | tail -n 1)
+              # Spelled out rather than filled from the branch's first commit:
+              # `--fill-first` reads `origin/<base>...<head>`, and this job
+              # checks out the merge commit by SHA, which leaves no
+              # remote-tracking ref for the base to resolve against. The title
+              # is the commit message either way.
+              PR_URL=$(gh pr create \
+                --title "${COMMIT}" \
+                --body "Regenerated \`.github/template.png\` from the rendered slides." \
+                --base "${GITHUB_REF_NAME}" \
+                --head "${BRANCH}" \
+                --label "Type: CI/CD :robot:" | tail -n 1)
               echo "Pull request: ${PR_URL}"
               sleep 5
               # Named rather than inferred from the checked-out branch, as the
-              # bump job does. Nothing waits on this one: the thumbnail is not
-              # part of the release being cut.
+              # bump job does.
               gh pr merge "${PR_URL}" --auto --squash --delete-branch
               sleep 5
             else
