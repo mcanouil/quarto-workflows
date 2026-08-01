@@ -195,4 +195,10 @@ The detected formats and engines are written to the job summary by the action it
 | `knitr`                         | R (public RSPM binaries), then `renv` when a `renv.lock` is found, otherwise a cached `knitr` and `rmarkdown`. |
 | `jupyter`                       | `uv`, with the interpreter it resolves from `requires-python`, then `uv sync` when a `pyproject.toml` is found, otherwise a bootstrap environment with `jupyter` and `papermill`. |
 | `julia`                         | Julia and a package cache, then `Pkg.instantiate()` and `IJulia`.                          |
-| `pdf`, `beamer`, `latex` format | TinyTeX, and the Chrome libraries Quarto needs to turn diagrams into images.                |
+| `pdf`, `beamer`, `latex` format | TinyTeX, cached across runs and put on `PATH`, and the Chrome libraries Quarto needs to turn diagrams into images. |
+
+#### Tests
+
+[`test-setup-quarto-compute.yml`](.github/workflows/test-setup-quarto-compute.yml) runs the action against the fixtures under [`tests/`](tests), one per install path: `knitr` with a `renv.lock`, `jupyter` with and without a `pyproject.toml`, `julia`, a PDF format, and a Reveal.js deck converted with DeckTape as the release workflow does.
+Each fixture asserts what detection reported, checks that the toolchain it installed is usable, and renders.
+It runs on pull requests touching the action, its fixtures, or the slides script, on dispatch, and monthly.

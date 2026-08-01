@@ -477,6 +477,11 @@ jobs:
           EXTENSION_NAME: ${{ needs.bump-version.outputs.extension_name }}
           ACTIONS_STEP_DEBUG: ${{ vars.ACTIONS_STEP_DEBUG }}
           ACTIONS_RUNNER_DEBUG: ${{ vars.ACTIONS_RUNNER_DEBUG }}
+          # Decktape drives Chrome through Puppeteer, which otherwise downloads
+          # a Chromium of its own beside the one the compute action just proved
+          # works on this runner.
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
         shell: bash
         run: |
           if [ "${NEED_DECKTAPE}" = "true" ]; then

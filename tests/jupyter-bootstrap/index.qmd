@@ -1,0 +1,9 @@
+---
+title: "Jupyter without a manifest"
+---
+
+A cell in Python with no `pyproject.toml` anywhere, so the bootstrap path runs.
+
+```{python}
+1 + 1
+```

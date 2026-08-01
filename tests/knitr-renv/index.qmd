@@ -1,0 +1,9 @@
+---
+title: "knitr with renv"
+---
+
+A cell in R, so detection reports the `knitr` engine.
+
+```{r}
+1 + 1
+```

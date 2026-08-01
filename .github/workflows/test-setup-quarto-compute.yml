@@ -1,0 +1,205 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
+name: Test Setup Quarto Compute
+
+# The compute action decides what a repository installs, and every path through
+# it used to debut unattended on whichever repository first needed it. Each
+# fixture under tests/ exercises one of those paths here instead.
+on:
+  pull_request:
+    paths:
+      - ".github/actions/setup-quarto-compute/**"
+      - ".github/workflows/test-setup-quarto-compute.yml"
+      - ".github/workflows/assets/slides-to-pdf.sh"
+      - "tests/**"
+  workflow_dispatch:
+  schedule:
+    - cron: "30 4 1 * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: ${{ matrix.fixture }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The lockfile carries jsonlite alone, since a lockfile complete
+          # enough to render would have to pin the whole knitr and rmarkdown
+          # tree by hand. It proves the renv path runs against the located
+          # manifest, so this fixture installs without rendering. renv restores
+          # into a project library that only an R session started in the project
+          # sees, through the .Rprofile every renv repository commits, so the
+          # check runs from there.
+          - fixture: knitr-renv
+            expect-r: "true"
+            expect-python: "false"
+            expect-julia: "false"
+            expect-tinytex: "false"
+            verify: Rscript -e 'stopifnot(requireNamespace("jsonlite", quietly = TRUE))'
+            verify-directory: tests/knitr-renv
+            render: "false"
+          - fixture: jupyter-bootstrap
+            expect-r: "false"
+            expect-python: "true"
+            expect-julia: "false"
+            expect-tinytex: "false"
+            verify: jupyter --version
+            render: "true"
+          - fixture: jupyter-uv
+            expect-r: "false"
+            expect-python: "true"
+            expect-julia: "false"
+            expect-tinytex: "false"
+            verify: jupyter --version
+            render: "true"
+          - fixture: julia
+            expect-r: "false"
+            expect-python: "false"
+            expect-julia: "true"
+            expect-tinytex: "false"
+            # IJulia is added to the project the action instantiated, which is
+            # the workspace when the fixture carries no Project.toml.
+            verify: julia --project=. -e 'using IJulia'
+            render: "true"
+          - fixture: pdf
+            expect-r: "false"
+            expect-python: "false"
+            expect-julia: "false"
+            expect-tinytex: "true"
+            verify: pdflatex --version
+            render: "true"
+          - fixture: revealjs
+            expect-r: "false"
+            expect-python: "false"
+            expect-julia: "false"
+            expect-tinytex: "false"
+            verify: quarto --version
+            render: "true"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Quarto CLI
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          tinytex: false
+
+      - name: Set up compute environment
+        id: compute
+        uses: ./.github/actions/setup-quarto-compute
+        with:
+          path: tests/${{ matrix.fixture }}
+
+      - name: Assert what was detected
+        env:
+          NEED_R: ${{ steps.compute.outputs.need-r }}
+          NEED_PYTHON: ${{ steps.compute.outputs.need-python }}
+          NEED_JULIA: ${{ steps.compute.outputs.need-julia }}
+          NEED_TINYTEX: ${{ steps.compute.outputs.need-tinytex }}
+          EXPECT_R: ${{ matrix.expect-r }}
+          EXPECT_PYTHON: ${{ matrix.expect-python }}
+          EXPECT_JULIA: ${{ matrix.expect-julia }}
+          EXPECT_TINYTEX: ${{ matrix.expect-tinytex }}
+          INPUT_FILES: ${{ steps.compute.outputs.input-files }}
+          FIXTURE: ${{ matrix.fixture }}
+        shell: bash
+        run: |
+          FAILED=false
+          assert_eq() {
+            if [ "${2}" != "${3}" ]; then
+              echo "::error::${1}: expected '${3}', got '${2}'"
+              FAILED=true
+            fi
+          }
+
+          assert_eq need-r "${NEED_R}" "${EXPECT_R}"
+          assert_eq need-python "${NEED_PYTHON}" "${EXPECT_PYTHON}"
+          assert_eq need-julia "${NEED_JULIA}" "${EXPECT_JULIA}"
+          assert_eq need-tinytex "${NEED_TINYTEX}" "${EXPECT_TINYTEX}"
+          assert_eq input-files "${INPUT_FILES}" "${GITHUB_WORKSPACE}/tests/${FIXTURE}/index.qmd"
+
+          if [ "${FAILED}" = "true" ]; then
+            exit 1
+          fi
+          echo "Detection matches for ${FIXTURE}."
+
+      # What was installed has to be usable, not merely reported.
+      - name: Verify the toolchain
+        working-directory: ${{ matrix.verify-directory || '.' }}
+        shell: bash
+        run: ${{ matrix.verify }}
+
+      - name: Render the fixture
+        if: ${{ matrix.render == 'true' }}
+        shell: bash
+        run: quarto render "tests/${{ matrix.fixture }}"
+
+  slides:
+    name: decktape
+    runs-on: ubuntu-latest
+
+    # Mirrors what the release workflow does with a deck, so the browser
+    # decktape drives is exercised here rather than during a release.
+    env:
+      OUTPUT_DIRECTORY: _site
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Quarto CLI
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          tinytex: false
+
+      - name: Set up compute environment
+        uses: ./.github/actions/setup-quarto-compute
+        with:
+          path: tests/revealjs
+          chromium: "true"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+
+      - name: Install decktape
+        shell: bash
+        run: npm install -g decktape
+
+      # Quarto runs a post-render script from the project directory, so the
+      # script is referenced relative to it and writes its assets there too.
+      - name: Render the deck with the slides post-render script
+        shell: bash
+        run: |
+          yq eval '.project.post-render = ["../../.github/workflows/assets/slides-to-pdf.sh"]' -i tests/revealjs/_quarto.yml
+          quarto render tests/revealjs
+
+      - name: Assert the deck was converted
+        shell: bash
+        run: |
+          FAILED=false
+          for asset in tests/revealjs/release_assets/revealjs.pdf tests/revealjs/release_assets/revealjs.png; do
+            if [ ! -s "${asset}" ]; then
+              echo "::error::${asset} is missing or empty"
+              FAILED=true
+            fi
+          done
+
+          if [ "${FAILED}" = "true" ]; then
+            ls -R tests/revealjs || true
+            exit 1
+          fi
+          echo "Decktape produced the PDF and the thumbnail."
