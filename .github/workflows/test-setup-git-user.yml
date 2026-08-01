@@ -86,8 +86,10 @@ jobs:
         shell: bash
         run: |
           FAILED=false
-          NAME=$(git config --global user.name)
-          EMAIL=$(git config --global user.email)
+          # An unset key exits non-zero, which would abort the step before it
+          # could report which assertion failed.
+          NAME=$(git config --global user.name || true)
+          EMAIL=$(git config --global user.email || true)
 
           if [ -z "${TOKEN}" ]; then
             echo "::error::The action resolved no token."
@@ -132,8 +134,10 @@ jobs:
         shell: bash
         run: |
           FAILED=false
-          NAME=$(git config --global user.name)
-          EMAIL=$(git config --global user.email)
+          # An unset key exits non-zero, which would abort the step before it
+          # could report which assertion failed.
+          NAME=$(git config --global user.name || true)
+          EMAIL=$(git config --global user.email || true)
 
           if [ -z "${TOKEN}" ]; then
             echo "::error::The action resolved no token."
