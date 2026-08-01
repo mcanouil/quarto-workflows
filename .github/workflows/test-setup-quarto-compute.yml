@@ -27,8 +27,14 @@ concurrency:
 
 jobs:
   detect:
-    name: ${{ matrix.fixture }}
+    name: ${{ matrix.label || matrix.fixture }}
     runs-on: ubuntu-latest
+
+    # Set for the job rather than for the compute step, so it reaches the steps
+    # the composite action runs. Every fixture but one leaves it empty, and
+    # quarto only treats the exact string "1" as debug logging.
+    env:
+      RUNNER_DEBUG: ${{ matrix.runner-debug }}
 
     strategy:
       fail-fast: false
@@ -111,6 +117,21 @@ jobs:
             expect-inputs: index.qmd slides.qmd sub/deep/deep.qmd sub/page.qmd
             verify: quarto --version
             render: "true"
+          # A runner with step debug logging on exports RUNNER_DEBUG=1, which
+          # turns quarto's log up to DEBUG and puts a version banner on stderr
+          # ahead of everything else it prints. Detection has to read the JSON
+          # alone, so the richest fixture is detected a second time under it.
+          - fixture: formats
+            label: formats (debug logging)
+            runner-debug: "1"
+            expect-r: "false"
+            expect-python: "false"
+            expect-julia: "false"
+            expect-tinytex: "false"
+            expect-formats: docx gfm html revealjs typst
+            expect-inputs: index.qmd slides.qmd sub/deep/deep.qmd sub/page.qmd
+            verify: quarto --version
+            render: "false"
 
     steps:
       - name: Checkout repository

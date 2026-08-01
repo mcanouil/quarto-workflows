@@ -54,15 +54,35 @@ runs:
         # map of names to options, and rejects anything else.
         KEYS_OF='def keys_of: if . == null then [] elif type == "object" then keys else [.] end;'
 
+        INSPECT_JSON=$(mktemp)
+        INSPECT_LOG=$(mktemp)
+        INSPECT_ERR=$(mktemp)
+        trap 'rm -f "${INSPECT_JSON}" "${INSPECT_LOG}" "${INSPECT_ERR}"' EXIT
+
+        # quarto writes its log to stderr, and a runner with step debug logging
+        # on turns that log up to DEBUG, which puts a version banner in front of
+        # everything quarto prints. The log therefore goes to a file and stdout
+        # is read on its own, so only the JSON ever reaches jq. The log and
+        # anything that bypassed it are reported when the command fails.
+        inspect() {
+          if ! quarto inspect "${1}" --quiet --log "${INSPECT_LOG}" \
+            > "${INSPECT_JSON}" 2> "${INSPECT_ERR}"; then
+            echo "::error::quarto inspect failed for '${1}'"
+            cat "${INSPECT_LOG}" "${INSPECT_ERR}" >&2
+            return 1
+          fi
+          if ! jq -e 'type == "object"' "${INSPECT_JSON}" > /dev/null 2>&1; then
+            echo "::error::quarto inspect for '${1}' did not produce JSON"
+            cat "${INSPECT_JSON}" "${INSPECT_LOG}" "${INSPECT_ERR}" >&2
+            return 1
+          fi
+        }
+
         if [ -d "${INSPECT_PATH}" ]; then
           PROJECT_DIR="${INSPECT_PATH%/}"
-          if ! PROJECT_JSON=$(quarto inspect "${PROJECT_DIR}" 2>&1); then
-            echo "::error::quarto inspect failed for '${PROJECT_DIR}'"
-            echo "${PROJECT_JSON}"
-            exit 1
-          fi
-          ENGINES=$(echo "${PROJECT_JSON}" | jq -r '.engines[]?' | sort -u | xargs)
-          INPUT_FILES=$(echo "${PROJECT_JSON}" | jq -r '.files.input[]?')
+          inspect "${PROJECT_DIR}" || exit 1
+          ENGINES=$(jq -r '.engines[]?' "${INSPECT_JSON}" | sort -u | xargs)
+          INPUT_FILES=$(jq -r '.files.input[]?' "${INSPECT_JSON}")
 
           # Inspecting a project reports engines aggregated over every input,
           # including .ipynb and .md, but reports no resolved formats. Rather
@@ -71,7 +91,7 @@ runs:
           # takes them from: the project config, the front matter of each input,
           # and the _metadata.yml files above it. Only .qmd inputs are counted;
           # .md files would contribute a spurious "html".
-          CONFIG_FORMATS=$(echo "${PROJECT_JSON}" | jq -r "${KEYS_OF}"'.config.format | keys_of | .[]' | xargs)
+          CONFIG_FORMATS=$(jq -r "${KEYS_OF}"'.config.format | keys_of | .[]' "${INSPECT_JSON}" | xargs)
 
           if [ -n "$(find "${PROJECT_DIR}" -name '_metadata.y*ml' -print -quit)" ] && ! command -v yq > /dev/null 2>&1; then
             echo "::error::yq is required to read the _metadata.yml files under '${PROJECT_DIR}'"
@@ -115,14 +135,14 @@ runs:
               USES_CONFIG_FORMATS=true
             fi
             FILE_FORMATS="${FILE_FORMATS} ${file_formats}"
-          done < <(echo "${PROJECT_JSON}" | jq -r "${KEYS_OF}"'
+          done < <(jq -r "${KEYS_OF}"'
             .dir as $dir
             | (.fileInformation // {}) as $files
             | .files.input[]?
             | select(endswith(".qmd"))
             | ltrimstr($dir + "/") as $rel
             | [$rel, ($files[$rel].metadata.format | keys_of | join(" "))]
-            | @tsv')
+            | @tsv' "${INSPECT_JSON}")
 
           # An input that sets no format of its own renders the config formats,
           # and plain html when the config sets none either.
@@ -131,13 +151,9 @@ runs:
           fi
           FORMATS=$(echo "${FILE_FORMATS}" | tr ' ' '\n' | sed '/^$/d' | sort -u | xargs)
         else
-          if ! FILE_JSON=$(quarto inspect "${INSPECT_PATH}" 2>&1); then
-            echo "::error::quarto inspect failed for '${INSPECT_PATH}'"
-            echo "${FILE_JSON}"
-            exit 1
-          fi
-          ENGINES=$(echo "${FILE_JSON}" | jq -r '.engines[]?' | sort -u | xargs)
-          FORMATS=$(echo "${FILE_JSON}" | jq -r '.formats // {} | keys[]' | sort -u | xargs)
+          inspect "${INSPECT_PATH}" || exit 1
+          ENGINES=$(jq -r '.engines[]?' "${INSPECT_JSON}" | sort -u | xargs)
+          FORMATS=$(jq -r '.formats // {} | keys[]' "${INSPECT_JSON}" | sort -u | xargs)
           INPUT_FILES="${INSPECT_PATH}"
         fi
 
