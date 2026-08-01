@@ -37,13 +37,17 @@ jobs:
           # The lockfile carries jsonlite alone, since a lockfile complete
           # enough to render would have to pin the whole knitr and rmarkdown
           # tree by hand. It proves the renv path runs against the located
-          # manifest, so this fixture installs without rendering.
+          # manifest, so this fixture installs without rendering. renv restores
+          # into a project library that only an R session started in the project
+          # sees, through the .Rprofile every renv repository commits, so the
+          # check runs from there.
           - fixture: knitr-renv
             expect-r: "true"
             expect-python: "false"
             expect-julia: "false"
             expect-tinytex: "false"
             verify: Rscript -e 'stopifnot(requireNamespace("jsonlite", quietly = TRUE))'
+            verify-directory: tests/knitr-renv
             render: "false"
           - fixture: jupyter-bootstrap
             expect-r: "false"
@@ -64,7 +68,9 @@ jobs:
             expect-python: "false"
             expect-julia: "true"
             expect-tinytex: "false"
-            verify: julia -e 'using IJulia'
+            # IJulia is added to the project the action instantiated, which is
+            # the workspace when the fixture carries no Project.toml.
+            verify: julia --project=. -e 'using IJulia'
             render: "true"
           - fixture: pdf
             expect-r: "false"
@@ -131,6 +137,7 @@ jobs:
 
       # What was installed has to be usable, not merely reported.
       - name: Verify the toolchain
+        working-directory: ${{ matrix.verify-directory || '.' }}
         shell: bash
         run: ${{ matrix.verify }}
 
