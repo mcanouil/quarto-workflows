@@ -281,9 +281,14 @@ jobs:
           if [ -f "CHANGELOG.md" ]; then
             RELEASE_NOTES=$(awk '/^## Unreleased/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md | sed '/./,$!d')
             # A byte budget can land mid-line, and mid-character on anything
-            # outside ASCII, so the partial line it leaves behind is dropped.
-            if [ "${#RELEASE_NOTES}" -gt 10000 ]; then
-              RELEASE_NOTES=$(printf '%s' "${RELEASE_NOTES}" | head -c 10000 | sed '$d')
+            # outside ASCII, so the partial line the cut leaves is dropped.
+            BOUNDED=$(printf '%s' "${RELEASE_NOTES}" | head -c 10000)
+            if [ "${BOUNDED}" != "${RELEASE_NOTES}" ]; then
+              # A single line longer than the budget has no whole line to keep,
+              # and emptying the notes here would also skip the heading rewrite
+              # below, so the cut text stands in that case.
+              TRIMMED=$(printf '%s' "${BOUNDED}" | sed '$d')
+              RELEASE_NOTES="${TRIMMED:-${BOUNDED}}"
             fi
             if [ -n "${RELEASE_NOTES}" ]; then
               sed -i "s/^## Unreleased$/## ${VERSION} (${DATE})/" CHANGELOG.md
