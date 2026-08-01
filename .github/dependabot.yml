@@ -6,7 +6,11 @@
 version: 2
 updates:
   - package-ecosystem: "github-actions"
-    directory: "/"
+    # The root entry covers .github/workflows; composite actions are only
+    # scanned when their own directory is listed.
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
     labels:

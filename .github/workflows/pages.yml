@@ -101,8 +101,33 @@ jobs:
             echo "No docs/_scripts/sync-extension.sh; nothing to sync."
           fi
 
+      # Documentation pages execute code, so the runtimes behind the engines the
+      # site actually uses are installed here rather than assumed. The extension
+      # mirror above has to exist first, since inspecting the project resolves
+      # the extensions it declares.
+      - name: Set up compute environment
+        id: compute
+        uses: mcanouil/quarto-workflows/.github/actions/setup-quarto-compute@main
+        with:
+          path: docs
+
       - name: Render site
         run: quarto render docs
+
+      - name: Add render summary
+        env:
+          FORMATS: ${{ steps.compute.outputs.formats }}
+          ENGINES: ${{ steps.compute.outputs.engines }}
+        shell: bash
+        run: |
+          {
+            echo "## Documentation render"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|--------|"
+            echo "| Output Formats | \`${FORMATS}\` |"
+            echo "| Engines | \`${ENGINES}\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload site artifact
         if: ${{ github.event_name != 'pull_request' }}

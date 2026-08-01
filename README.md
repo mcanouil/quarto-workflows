@@ -14,7 +14,7 @@ It auto-detects output formats, language runtimes, and project type via `quarto 
 
 Key features include:
 
-- **Auto-detection**: Output formats, engines (R/Python/Julia), TinyTeX, and slide-to-PDF needs are detected automatically from `.qmd` files.
+- **Auto-detection**: Output formats, engines (R/Python/Julia), and TinyTeX are detected by the [`setup-quarto-compute`](#setup-quarto-compute) action, shared with `pages.yml`. Slide-to-PDF needs are derived from the detected formats.
 - **Repo type detection**: A repo is treated as an extension when it owns the manifest derived from its name (`owner/quarto-<name>` then `_extensions/<name>/_extension.yml`); such repos use semantic versioning. Every other repo is a project and uses date-based versioning, so a project that merely installs extensions as dependencies is not mistaken for one. Set the `repo-type` input to `extension` or `project` to override the detection.
 - **Project directory detection**: Renders from `docs/` when `docs/_quarto.yml` exists, otherwise from the repository root.
 - **Quarto project type**: The project type and output directory are read from `quarto inspect`, so `website` and `book` projects (and any custom `output-dir`) are deployed from the directory Quarto reports. Non-default projects render as a whole project, while default projects render each detected format individually.
@@ -91,3 +91,106 @@ jobs:
 
 The `version` input is only relevant for extension repos, meaning repos that own a matching `_extensions/<name>/_extension.yml`.
 A project ignores it and uses date-based versioning taken from `CITATION.cff`, so its caller drops both the `version` dispatch input and the `version:` line under `with:`.
+
+### [`pages.yml`](.github/workflows/pages.yml)
+
+A reusable workflow that renders the documentation website under `docs/` and deploys it to GitHub Pages.
+The Release workflow calls it after tagging, so the published site describes the version users can install.
+It is also dispatchable on its own, and a pull request that calls it renders the site as a check without deploying.
+
+Key features include:
+
+- **Released source by default**: The latest version tag is resolved and rendered, unless `ref` or `use-main-as-release` says otherwise. Pull requests always render their own head.
+- **Extension mirror**: `docs/_scripts/sync-extension.sh` is run when present, so a shortcode contributed by the repository's own extension is on disk before Quarto builds its extension registry.
+- **Compute environment**: R, Python, Julia, TinyTeX, and Chrome libraries are installed from what [`setup-quarto-compute`](#setup-quarto-compute) detects, so pages that execute code render.
+- **Single deployment at a time**: Pages runs queue rather than cancel; pull request renders get a per-ref concurrency group and run in parallel.
+
+#### Inputs
+
+| Input                 | Default     | Description                                                                        |
+| --------------------- | ----------- | ---------------------------------------------------------------------------------- |
+| `ref`                 | `""`        | Commit or ref to build. Defaults to the latest version tag.                        |
+| `use-main-as-release` | `false`     | Render from the triggering ref instead of the latest version tag.                   |
+| `quarto`              | `"release"` | Quarto version to install (`release` or `pre-release`).                            |
+
+#### Example
+
+```yaml
+name: Pages
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "_extensions/**"
+      - "CHANGELOG.md"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+    inputs:
+      use-main-as-release:
+        type: boolean
+        description: "Render from the default branch instead of the latest version tag"
+        default: false
+      quarto:
+        type: choice
+        description: "Quarto version"
+        default: "release"
+        options:
+          - "release"
+          - "pre-release"
+
+permissions:
+  contents: read
+
+jobs:
+  pages:
+    uses: mcanouil/quarto-workflows/.github/workflows/pages.yml@main
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    with:
+      use-main-as-release: ${{ inputs.use-main-as-release || false }}
+      quarto: ${{ inputs.quarto || 'release' }}
+```
+
+## Actions
+
+### [`setup-quarto-compute`](.github/actions/setup-quarto-compute/action.yml)
+
+A composite action that reads what a Quarto project needs from `quarto inspect`, then installs only that.
+It is used by both `release.yml` and `pages.yml`, and expects Quarto to be installed already, along with any extension the project resolves.
+
+Engines come from the project-level inspection, so `.qmd`, `.ipynb`, and `.md` inputs all count.
+Formats come from a second pass over the `.qmd` inputs, since a project inspection reports none.
+Dependency manifests are looked up in the project directory first and the repository root second, which is how a `docs/` website renders with a `pyproject.toml` or `renv.lock` kept at the root.
+
+A Python environment is left activated by `uv`, so later steps render with it without sourcing anything.
+Inspection does not run pre-render scripts, so a document generated by one is invisible to detection: an engine used only by a generated document has to be present in a committed document as well.
+
+#### Inputs
+
+| Input      | Default | Description                                                                                                         |
+| ---------- | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `path`     | `"."`   | Quarto project directory or single document to inspect.                                                             |
+| `chromium` | `"auto"`| Install Chrome libraries: `auto` only when a LaTeX-bound format is detected, `true` always, `false` never.           |
+
+#### Outputs
+
+| Output         | Description                                                        |
+| -------------- | ------------------------------------------------------------------- |
+| `formats`      | Space-separated output formats detected across the project.        |
+| `engines`      | Space-separated engines detected across the project.               |
+| `need-r`       | Whether the `knitr` engine is used.                                |
+| `need-python`  | Whether the `jupyter` engine is used.                              |
+| `need-julia`   | Whether the `julia` engine is used.                                |
+| `need-tinytex` | Whether a LaTeX-bound format is produced (Typst does not count).   |
+
+#### Installed per detection
+
+| Detected                        | Installed                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------ |
+| `knitr`                         | R (public RSPM binaries), then `renv` when a `renv.lock` is found, otherwise a cached `knitr` and `rmarkdown`. |
+| `jupyter`                       | `uv`, with the interpreter it resolves from `requires-python`, then `uv sync` when a `pyproject.toml` is found, otherwise a bootstrap environment with `jupyter` and `papermill`. |
+| `julia`                         | Julia and a package cache, then `Pkg.instantiate()` and `IJulia`.                          |
+| `pdf`, `beamer`, `latex` format | TinyTeX, and the Chrome libraries Quarto needs to turn diagrams into images.                |

@@ -209,7 +209,7 @@ jobs:
             VERSION=$(grep '^version:' CITATION.cff | awk '{print $2}')
             if [ "${PREV_DATE}" = "${CURRENT_DATE}" ]; then
               if [[ "${VERSION}" =~ -([0-9]+)$ ]]; then
-                NUMBER=$(( ${BASH_REMATCH[1]} + 1 ))
+                NUMBER=$(( BASH_REMATCH[1] + 1 ))
                 VERSION="${VERSION%-*}-${NUMBER}"
               else
                 VERSION="${VERSION}-2"
@@ -293,15 +293,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Check and fix Google Chrome
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1
-          ldd /usr/bin/google-chrome | grep "not found" || echo "All Chrome dependencies satisfied."
-          google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null 2>&1
-          echo "Google Chrome is working properly."
-
       - name: Setup Git User
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
@@ -375,76 +366,24 @@ jobs:
             echo "quarto_project_type=${QUARTO_PROJECT_TYPE}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Auto-detect formats and engines
-        id: inspect
+      # Chrome is installed unconditionally here, since decktape drives it to
+      # turn slides into PDF whatever the engines and formats turn out to be.
+      - name: Set up compute environment
+        id: compute
+        uses: mcanouil/quarto-workflows/.github/actions/setup-quarto-compute@main
+        with:
+          path: ${{ steps.detect-project-dir.outputs.project_dir }}
+          chromium: "true"
+
+      # A presentation repository converts every deck it renders, while an
+      # extension only converts the decks that exercise the format it ships, so
+      # plain `revealjs` output is left alone there.
+      - name: Check decktape need
+        id: check-decktape
         env:
-          PROJECT_DIR: ${{ steps.detect-project-dir.outputs.project_dir }}
+          FORMATS: ${{ steps.compute.outputs.formats }}
         shell: bash
         run: |
-          echo "::group::Quarto Inspect"
-
-          # Get input .qmd files only (exclude .md to avoid spurious "html" format)
-          INPUT_FILES=$(quarto inspect "${PROJECT_DIR}" 2>/dev/null \
-            | jq -r '.files.input[] | select(endswith(".qmd"))' 2>/dev/null)
-
-          DETECTED_FORMATS=""
-          DETECTED_ENGINES=""
-
-          for qmd_file in ${INPUT_FILES}; do
-            echo "Inspecting: ${qmd_file}"
-            INSPECT_JSON=$(quarto inspect "${qmd_file}" 2>/dev/null || true)
-            if [ -z "${INSPECT_JSON}" ]; then
-              echo "  Skipped (no output)"
-              continue
-            fi
-
-            # Collect formats
-            FILE_FORMATS=$(echo "${INSPECT_JSON}" | jq -r '.formats | keys[]' 2>/dev/null || true)
-            for fmt in ${FILE_FORMATS}; do
-              if ! echo " ${DETECTED_FORMATS} " | grep -qF " ${fmt} "; then
-                DETECTED_FORMATS="${DETECTED_FORMATS} ${fmt}"
-              fi
-            done
-
-            # Collect engines (document-specific: "markdown", "knitr", "jupyter", "julia")
-            FILE_ENGINES=$(echo "${INSPECT_JSON}" | jq -r '.engines[]' 2>/dev/null || true)
-            for eng in ${FILE_ENGINES}; do
-              if ! echo " ${DETECTED_ENGINES} " | grep -qF " ${eng} "; then
-                DETECTED_ENGINES="${DETECTED_ENGINES} ${eng}"
-              fi
-            done
-
-            echo "  Formats: ${FILE_FORMATS}"
-            echo "  Engines: ${FILE_ENGINES}"
-          done
-
-          FORMATS=$(echo "${DETECTED_FORMATS}" | xargs)
-          ENGINES=$(echo "${DETECTED_ENGINES}" | xargs)
-
-          # Derive setup flags from engines
-          NEED_R=false
-          NEED_PYTHON=false
-          NEED_JULIA=false
-          NEED_TINYTEX=false
-
-          if echo " ${ENGINES} " | grep -qF " knitr "; then
-            NEED_R=true
-          fi
-          if echo " ${ENGINES} " | grep -qF " jupyter "; then
-            NEED_PYTHON=true
-          fi
-          if echo " ${ENGINES} " | grep -qF " julia "; then
-            NEED_JULIA=true
-          fi
-
-          # Derive TinyTeX need from formats
-          for fmt in ${FORMATS}; do
-            case "${fmt}" in
-              *pdf*|*beamer*|*latex*) NEED_TINYTEX=true; break ;;
-            esac
-          done
-
-          # Derive decktape need from formats and project type
           NEED_DECKTAPE=false
           if [ "${REPO_TYPE}" = "project" ]; then
             if echo "${FORMATS}" | grep -q "revealjs"; then
@@ -459,129 +398,15 @@ jobs:
             done
           fi
 
-          echo "::endgroup::"
-
-          echo "Auto-detected formats: ${FORMATS}"
-          echo "Auto-detected engines: ${ENGINES}"
-          echo "Need R: ${NEED_R}, Python: ${NEED_PYTHON}, Julia: ${NEED_JULIA}"
-          echo "Need TinyTeX: ${NEED_TINYTEX}, Decktape: ${NEED_DECKTAPE}"
-
-          {
-            echo "formats=${FORMATS}"
-            echo "engines=${ENGINES}"
-            echo "need_r=${NEED_R}"
-            echo "need_python=${NEED_PYTHON}"
-            echo "need_julia=${NEED_JULIA}"
-            echo "need_tinytex=${NEED_TINYTEX}"
-            echo "need_decktape=${NEED_DECKTAPE}"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Install TinyTeX
-        if: ${{ steps.inspect.outputs.need_tinytex == 'true' }}
-        shell: bash
-        run: quarto install tinytex --update-path
-
-      - name: Check R environment
-        id: check-r-env
-        if: ${{ steps.inspect.outputs.need_r == 'true' }}
-        run: |
-          if [ -f "renv.lock" ]; then
-            echo "renv=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "renv=false" >> "${GITHUB_OUTPUT}"
-          fi
-
-      - name: Set up R
-        if: ${{ steps.inspect.outputs.need_r == 'true' }}
-        uses: r-lib/actions/setup-r@v2
-
-      - name: Install renv
-        if: ${{ steps.inspect.outputs.need_r == 'true' && steps.check-r-env.outputs.renv == 'true' }}
-        uses: r-lib/actions/setup-renv@v2
-
-      - name: Install R dependencies
-        if: ${{ steps.inspect.outputs.need_r == 'true' }}
-        env:
-          RENV: ${{ steps.check-r-env.outputs.renv == 'true' }}
-        shell: bash
-        run: |
-          if [ "${RENV}" = "true" ]; then
-            Rscript -e 'renv::restore()'
-          else
-            Rscript -e 'install.packages(c("knitr", "rmarkdown"))'
-          fi
-
-      - name: Check Python environment
-        id: check-python-env
-        if: ${{ steps.inspect.outputs.need_python == 'true' }}
-        run: |
-          if [ -f "pyproject.toml" ]; then
-            echo "python=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "python=false" >> "${GITHUB_OUTPUT}"
-          fi
-          if [ -f "uv.lock" ]; then
-            echo "uv=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "uv=false" >> "${GITHUB_OUTPUT}"
-          fi
-
-      - name: Install uv (with cache)
-        if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.uv == 'true' }}
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - name: Install uv (without cache)
-        if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.uv == 'false' }}
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-
-      - name: Set up Python (from pyproject.toml)
-        if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.python == 'true' }}
-        uses: actions/setup-python@v7
-        with:
-          python-version-file: "pyproject.toml"
-
-      - name: Set up Python (default)
-        if: ${{ steps.inspect.outputs.need_python == 'true' && steps.check-python-env.outputs.python == 'false' }}
-        uses: actions/setup-python@v7
-
-      - name: Install Python dependencies
-        if: ${{ steps.inspect.outputs.need_python == 'true' }}
-        env:
-          UV: ${{ steps.check-python-env.outputs.uv == 'true' }}
-        shell: bash
-        run: |
-          if [ "${UV}" = "true" ]; then
-            uv sync
-          else
-            uv init --no-package --vcs none --bare --no-readme --author-from none
-            uv venv
-            source .venv/bin/activate
-            uv add jupyter papermill
-            uv sync
-          fi
-
-      - name: Set up Julia
-        if: ${{ steps.inspect.outputs.need_julia == 'true' }}
-        uses: julia-actions/setup-julia@v3
-
-      - name: Install Julia dependencies
-        if: ${{ steps.inspect.outputs.need_julia == 'true' }}
-        shell: bash
-        run: |
-          julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'
-          julia --project=. -e 'using Pkg; Pkg.add(["IJulia"])'
+          echo "Need Decktape: ${NEED_DECKTAPE}"
+          echo "need_decktape=${NEED_DECKTAPE}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Node.js
-        if: ${{ steps.inspect.outputs.need_decktape == 'true' }}
+        if: ${{ steps.check-decktape.outputs.need_decktape == 'true' }}
         uses: actions/setup-node@v7
 
       - name: Checkout slides-to-pdf script
-        if: ${{ steps.inspect.outputs.need_decktape == 'true' }}
+        if: ${{ steps.check-decktape.outputs.need_decktape == 'true' }}
         uses: actions/checkout@v7
         with:
           repository: mcanouil/quarto-workflows
@@ -643,18 +468,14 @@ jobs:
           OUTPUT_DIRECTORY: ${{ steps.detect-project-dir.outputs.output_directory }}
           QUARTO_PROJECT_TYPE: ${{ steps.detect-project-dir.outputs.quarto_project_type }}
           REPO_TYPE: ${{ needs.bump-version.outputs.repo_type }}
-          FORMATS: ${{ steps.inspect.outputs.formats }}
-          NEED_PYTHON: ${{ steps.inspect.outputs.need_python }}
-          NEED_DECKTAPE: ${{ steps.inspect.outputs.need_decktape }}
+          FORMATS: ${{ steps.compute.outputs.formats }}
+          NEED_DECKTAPE: ${{ steps.check-decktape.outputs.need_decktape }}
           VERSION: ${{ needs.bump-version.outputs.version }}
           EXTENSION_NAME: ${{ needs.bump-version.outputs.extension_name }}
           ACTIONS_STEP_DEBUG: ${{ vars.ACTIONS_STEP_DEBUG }}
           ACTIONS_RUNNER_DEBUG: ${{ vars.ACTIONS_RUNNER_DEBUG }}
         shell: bash
         run: |
-          if [ "${NEED_PYTHON}" = "true" ] && [ -f ".venv/bin/activate" ]; then
-            source .venv/bin/activate
-          fi
           if [ "${NEED_DECKTAPE}" = "true" ]; then
             npm install -g decktape
 
@@ -814,8 +635,8 @@ jobs:
       - name: Add deployment summary
         id: deployment-summary
         env:
-          FORMATS: ${{ steps.inspect.outputs.formats }}
-          ENGINES: ${{ steps.inspect.outputs.engines }}
+          FORMATS: ${{ steps.compute.outputs.formats }}
+          ENGINES: ${{ steps.compute.outputs.engines }}
         shell: bash
         run: |
           SUMMARY="## Deployment\n\n"
