@@ -195,6 +195,10 @@ runs:
           echo "| Engines | \`${ENGINES}\` |"
         } >> "${GITHUB_STEP_SUMMARY}"
 
+        # The input paths come off the filesystem, where a newline is a legal
+        # character in a name, so a fixed marker is one crafted path away from
+        # ending the value early and having the rest parsed as further outputs.
+        INPUT_FILES_DELIM="INPUT_FILES_$(openssl rand -hex 16)"
         {
           echo "formats=${FORMATS}"
           echo "engines=${ENGINES}"
@@ -202,9 +206,9 @@ runs:
           echo "need-python=${NEED_PYTHON}"
           echo "need-julia=${NEED_JULIA}"
           echo "need-tinytex=${NEED_TINYTEX}"
-          echo "input-files<<INPUT_FILES_DELIM"
+          echo "input-files<<${INPUT_FILES_DELIM}"
           echo "${INPUT_FILES}"
-          echo "INPUT_FILES_DELIM"
+          echo "${INPUT_FILES_DELIM}"
         } >> "${GITHUB_OUTPUT}"
 
     # A documentation website lives under docs/ while the dependency manifests
