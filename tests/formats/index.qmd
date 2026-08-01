@@ -1,0 +1,5 @@
+---
+title: "Project formats"
+---
+
+Renders the formats the project config sets.

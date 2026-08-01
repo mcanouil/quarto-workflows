@@ -46,6 +46,8 @@ jobs:
             expect-python: "false"
             expect-julia: "false"
             expect-tinytex: "false"
+            expect-formats: html
+            expect-inputs: index.qmd
             verify: Rscript -e 'stopifnot(requireNamespace("jsonlite", quietly = TRUE))'
             verify-directory: tests/knitr-renv
             render: "false"
@@ -54,6 +56,8 @@ jobs:
             expect-python: "true"
             expect-julia: "false"
             expect-tinytex: "false"
+            expect-formats: html
+            expect-inputs: index.qmd
             verify: jupyter --version
             render: "true"
           - fixture: jupyter-uv
@@ -61,6 +65,8 @@ jobs:
             expect-python: "true"
             expect-julia: "false"
             expect-tinytex: "false"
+            expect-formats: html
+            expect-inputs: index.qmd
             verify: jupyter --version
             render: "true"
           - fixture: julia
@@ -68,6 +74,8 @@ jobs:
             expect-python: "false"
             expect-julia: "true"
             expect-tinytex: "false"
+            expect-formats: html
+            expect-inputs: index.qmd
             # IJulia is added to the project the action instantiated, which is
             # the workspace when the fixture carries no Project.toml.
             verify: julia --project=. -e 'using IJulia'
@@ -77,6 +85,8 @@ jobs:
             expect-python: "false"
             expect-julia: "false"
             expect-tinytex: "true"
+            expect-formats: pdf
+            expect-inputs: index.qmd
             verify: pdflatex --version
             render: "true"
           - fixture: revealjs
@@ -84,6 +94,21 @@ jobs:
             expect-python: "false"
             expect-julia: "false"
             expect-tinytex: "false"
+            expect-formats: revealjs
+            expect-inputs: index.qmd
+            verify: quarto --version
+            render: "true"
+          # Formats are derived from the project JSON rather than from a pass
+          # over every input, so this fixture sets them in each of the places
+          # quarto reads them from: the project config, the front matter of an
+          # input, and a _metadata.yml nested inside another one.
+          - fixture: formats
+            expect-r: "false"
+            expect-python: "false"
+            expect-julia: "false"
+            expect-tinytex: "false"
+            expect-formats: docx gfm html revealjs typst
+            expect-inputs: index.qmd slides.qmd sub/deep/deep.qmd sub/page.qmd
             verify: quarto --version
             render: "true"
 
@@ -108,10 +133,13 @@ jobs:
           NEED_PYTHON: ${{ steps.compute.outputs.need-python }}
           NEED_JULIA: ${{ steps.compute.outputs.need-julia }}
           NEED_TINYTEX: ${{ steps.compute.outputs.need-tinytex }}
+          FORMATS: ${{ steps.compute.outputs.formats }}
           EXPECT_R: ${{ matrix.expect-r }}
           EXPECT_PYTHON: ${{ matrix.expect-python }}
           EXPECT_JULIA: ${{ matrix.expect-julia }}
           EXPECT_TINYTEX: ${{ matrix.expect-tinytex }}
+          EXPECT_FORMATS: ${{ matrix.expect-formats }}
+          EXPECT_INPUTS: ${{ matrix.expect-inputs }}
           INPUT_FILES: ${{ steps.compute.outputs.input-files }}
           FIXTURE: ${{ matrix.fixture }}
         shell: bash
@@ -124,11 +152,18 @@ jobs:
             fi
           }
 
+          # The action reports the inputs in whatever order quarto lists them.
+          EXPECTED_INPUTS=""
+          for input in ${EXPECT_INPUTS}; do
+            EXPECTED_INPUTS="${EXPECTED_INPUTS}${GITHUB_WORKSPACE}/tests/${FIXTURE}/${input}"$'\n'
+          done
+
           assert_eq need-r "${NEED_R}" "${EXPECT_R}"
           assert_eq need-python "${NEED_PYTHON}" "${EXPECT_PYTHON}"
           assert_eq need-julia "${NEED_JULIA}" "${EXPECT_JULIA}"
           assert_eq need-tinytex "${NEED_TINYTEX}" "${EXPECT_TINYTEX}"
-          assert_eq input-files "${INPUT_FILES}" "${GITHUB_WORKSPACE}/tests/${FIXTURE}/index.qmd"
+          assert_eq formats "${FORMATS}" "${EXPECT_FORMATS}"
+          assert_eq input-files "$(echo "${INPUT_FILES}" | sort)" "$(printf '%s' "${EXPECTED_INPUTS}" | sort)"
 
           if [ "${FAILED}" = "true" ]; then
             exit 1

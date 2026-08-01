@@ -50,27 +50,85 @@ runs:
         INSPECT_PATH: ${{ inputs.path }}
       shell: bash
       run: |
+        # Wherever it is set, quarto accepts `format:` as a single name or as a
+        # map of names to options, and rejects anything else.
+        KEYS_OF='def keys_of: if . == null then [] elif type == "object" then keys else [.] end;'
+
         if [ -d "${INSPECT_PATH}" ]; then
-          # Inspecting a project reports engines aggregated over every input,
-          # including .ipynb and .md, but reports no formats. Formats therefore
-          # come from a second pass over the .qmd inputs; .md files are skipped
-          # because they would contribute a spurious "html".
-          if ! PROJECT_JSON=$(quarto inspect "${INSPECT_PATH}" 2>&1); then
-            echo "::error::quarto inspect failed for '${INSPECT_PATH}'"
+          PROJECT_DIR="${INSPECT_PATH%/}"
+          if ! PROJECT_JSON=$(quarto inspect "${PROJECT_DIR}" 2>&1); then
+            echo "::error::quarto inspect failed for '${PROJECT_DIR}'"
             echo "${PROJECT_JSON}"
             exit 1
           fi
           ENGINES=$(echo "${PROJECT_JSON}" | jq -r '.engines[]?' | sort -u | xargs)
           INPUT_FILES=$(echo "${PROJECT_JSON}" | jq -r '.files.input[]?')
 
+          # Inspecting a project reports engines aggregated over every input,
+          # including .ipynb and .md, but reports no resolved formats. Rather
+          # than inspect every input in turn, which costs a quarto process per
+          # page, the formats are put back together from the three places quarto
+          # takes them from: the project config, the front matter of each input,
+          # and the _metadata.yml files above it. Only .qmd inputs are counted;
+          # .md files would contribute a spurious "html".
+          CONFIG_FORMATS=$(echo "${PROJECT_JSON}" | jq -r "${KEYS_OF}"'.config.format | keys_of | .[]' | xargs)
+
+          if [ -n "$(find "${PROJECT_DIR}" -name '_metadata.y*ml' -print -quit)" ] && ! command -v yq > /dev/null 2>&1; then
+            echo "::error::yq is required to read the _metadata.yml files under '${PROJECT_DIR}'"
+            exit 1
+          fi
+
+          # A _metadata.yml applies to the inputs beneath it, and every level
+          # from the project directory down merges rather than replaces.
+          metadata_formats() {
+            dir="${1}"
+            found=""
+            while :; do
+              for name in _metadata.yml _metadata.yaml; do
+                if [ -f "${dir}/${name}" ]; then
+                  found="${found} $(yq -o=json '.' "${dir}/${name}" | jq -r "${KEYS_OF}"'.format | keys_of | .[]' | xargs)"
+                fi
+              done
+              if [ "${dir}" = "${PROJECT_DIR}" ] || [ "${dir}" = "$(dirname "${dir}")" ]; then
+                break
+              fi
+              dir=$(dirname "${dir}")
+            done
+            printf '%s' "${found}"
+          }
+
           FILE_FORMATS=""
-          for qmd_file in $(echo "${INPUT_FILES}" | grep '\.qmd$' || true); do
-            if ! FILE_JSON=$(quarto inspect "${qmd_file}" 2>&1); then
-              echo "::warning::quarto inspect failed for '${qmd_file}'; its formats are not accounted for"
-              continue
+          USES_CONFIG_FORMATS=false
+          while IFS=$'\t' read -r rel front_matter_formats; do
+            [ -n "${rel}" ] || continue
+            rel_dir=$(dirname "${rel}")
+            if [ "${rel_dir}" = "." ]; then
+              file_dir="${PROJECT_DIR}"
+            else
+              file_dir="${PROJECT_DIR}/${rel_dir}"
             fi
-            FILE_FORMATS="${FILE_FORMATS} $(echo "${FILE_JSON}" | jq -r '.formats // {} | keys[]' | xargs)"
-          done
+            directory_formats=$(metadata_formats "${file_dir}")
+            file_formats=$(echo "${directory_formats} ${front_matter_formats}" | xargs)
+            # Front matter and _metadata.yml both replace the project config, so
+            # an input only renders the config formats when it sets none itself.
+            if [ -z "${file_formats}" ]; then
+              USES_CONFIG_FORMATS=true
+            fi
+            FILE_FORMATS="${FILE_FORMATS} ${file_formats}"
+          done < <(echo "${PROJECT_JSON}" | jq -r "${KEYS_OF}"'
+            .dir as $dir
+            | (.fileInformation // {}) as $files
+            | .files.input[]?
+            | select(endswith(".qmd"))
+            | ltrimstr($dir + "/") as $rel
+            | [$rel, ($files[$rel].metadata.format | keys_of | join(" "))]
+            | @tsv')
+
+          # An input that sets no format of its own renders the config formats,
+          # and plain html when the config sets none either.
+          if [ "${USES_CONFIG_FORMATS}" = "true" ]; then
+            FILE_FORMATS="${FILE_FORMATS} ${CONFIG_FORMATS:-html}"
+          fi
           FORMATS=$(echo "${FILE_FORMATS}" | tr ' ' '\n' | sed '/^$/d' | sort -u | xargs)
         else
           if ! FILE_JSON=$(quarto inspect "${INSPECT_PATH}" 2>&1); then

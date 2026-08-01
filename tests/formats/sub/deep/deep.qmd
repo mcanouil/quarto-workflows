@@ -1,0 +1,5 @@
+---
+title: "Nested directory formats"
+---
+
+A nested _metadata.yml merges with the one above it.

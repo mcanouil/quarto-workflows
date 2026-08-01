@@ -1,0 +1,7 @@
+---
+title: "Front matter formats"
+format:
+  revealjs: default
+---
+
+Front matter replaces the formats the project config sets.

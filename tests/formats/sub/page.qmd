@@ -1,0 +1,5 @@
+---
+title: "Directory formats"
+---
+
+A _metadata.yml replaces the formats the project config sets.
