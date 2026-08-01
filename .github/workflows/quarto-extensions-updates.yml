@@ -1,3 +1,7 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
 name: Quarto Extensions Updates
 
 # Runs on a schedule for this repository, and is callable by any repository that
@@ -27,8 +31,10 @@ on:
         required: false
         type: string
 
+# Keyed on the ref alone: the scheduled run and a dispatch of the same workflow
+# would otherwise race over creating the same update pull requests.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:

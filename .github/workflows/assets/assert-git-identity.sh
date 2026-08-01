@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
 # Asserts the git identity setup-git-user wrote, for one of the credential paths
 # it resolves. TOKEN carries the token the action returned.
 

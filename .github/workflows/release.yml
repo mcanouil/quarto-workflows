@@ -1,3 +1,7 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
 name: Release
 
 on:
@@ -36,6 +40,18 @@ permissions:
   id-token: write
   pages: write
 
+# A release bumps a version, pushes a branch, and creates a tag, so two of them
+# at once would race over all three. Queue rather than cancel: a cancelled
+# release leaves the bump branch and its pull request behind.
+#
+# The group is evaluated in the caller's repository, where a workflow named
+# Release picking the obvious `release-<ref>` for itself would deadlock: the
+# calling job would hold the group while waiting for this one to claim it. Hence
+# the prefix.
+concurrency:
+  group: quarto-workflows-release-${{ github.ref }}
+  cancel-in-progress: false
+
 # Every job resolves its own token, and each has to be told the same App id, so
 # it is derived once here rather than in each of the four calls. The key and the
 # fallback token stay at the call sites, since a workflow-level `env` cannot
@@ -51,9 +67,14 @@ jobs:
       BRANCH: ci/bump-version
       COMMIT: "ci: bump version for release :rocket:"
       BUMP_VERSION: ${{ inputs.version }}
+      # How long to wait for the bump pull request to merge. Auto-merge waits
+      # for whatever checks the default branch requires, so this has to cover a
+      # full check suite.
+      MERGE_TIMEOUT: "1800"
 
     outputs:
       version: ${{ steps.bump-version.outputs.version }}
+      merge_sha: ${{ steps.bump-version.outputs.merge_sha }}
       release_title: ${{ steps.bump-version.outputs.release_title }}
       release_notes: ${{ steps.bump-version.outputs.release_notes }}
       summary: ${{ steps.bump-version.outputs.summary }}
@@ -161,12 +182,26 @@ jobs:
           EXTENSION: ${{ steps.detect-project.outputs.extension_name }}
         shell: bash
         run: |
-          if git show-ref --quiet "refs/heads/${BRANCH}"; then
-            echo "Branch ${BRANCH} already exists."
-            git branch -D "${BRANCH}"
-            git push origin --delete "${BRANCH}"
+          # A run that died between creating the pull request and merging it
+          # leaves both the branch and an open pull request behind. The branch is
+          # force-pushed below, but an open pull request would make `gh pr create`
+          # fail, so it is closed first. The branch only ever exists on the
+          # remote: this job works from a fresh clone.
+          if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
+            echo "Remote branch ${BRANCH} already exists; it will be force-pushed."
+            STALE_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
+            if [ -n "${STALE_PR}" ]; then
+              echo "Closing the stale pull request #${STALE_PR}."
+              gh pr close "${STALE_PR}"
+            fi
           fi
-          git checkout -b "${BRANCH}"
+          git checkout -B "${BRANCH}"
+
+          # Both versioning paths record the release in CITATION.cff.
+          if [ ! -f "CITATION.cff" ]; then
+            echo "::error::No CITATION.cff found: the release records its version and date there."
+            exit 1
+          fi
 
           DATE=$(date +%Y-%m-%d)
 
@@ -174,7 +209,9 @@ jobs:
             # Semantic versioning for extensions
             MANIFEST="_extensions/${EXTENSION}/_extension.yml"
             echo "Manifest: ${MANIFEST}"
-            CURRENT_VERSION=$(grep "^version:" "${MANIFEST}" | sed 's/version: //;s/"//g')
+            # A manifest without a version: line makes grep exit non-zero, which
+            # would end the job here rather than at the check below.
+            CURRENT_VERSION=$(grep "^version:" "${MANIFEST}" | sed 's/version: //;s/"//g' || true)
             echo "Current Version: ${CURRENT_VERSION}"
             if [ -z "${CURRENT_VERSION}" ]; then
               echo "::error::No 'version:' field found in ${MANIFEST}"
@@ -219,9 +256,16 @@ jobs:
           else
             # Date-based versioning for projects
             CURRENT_DATE=$(date +%Y-%m-%d)
-            PREV_DATE=$(grep '^date-released:' CITATION.cff | awk '{print $2}' | tr -d '"')
-            VERSION=$(grep '^version:' CITATION.cff | awk '{print $2}')
+            # A missing field makes grep exit non-zero, which under `set -e`
+            # would end the job before either value can be checked.
+            PREV_DATE=$(grep '^date-released:' CITATION.cff | awk '{print $2}' | tr -d '"' || true)
+            VERSION=$(grep '^version:' CITATION.cff | awk '{print $2}' || true)
             if [ "${PREV_DATE}" = "${CURRENT_DATE}" ]; then
+              # Only this branch reuses the recorded version; the other replaces it.
+              if [ -z "${VERSION}" ]; then
+                echo "::error::No 'version:' field found in CITATION.cff"
+                exit 1
+              fi
               if [[ "${VERSION}" =~ -([0-9]+)$ ]]; then
                 NUMBER=$(( BASH_REMATCH[1] + 1 ))
                 VERSION="${VERSION%-*}-${NUMBER}"
@@ -240,7 +284,17 @@ jobs:
           # Shared: update CHANGELOG.md
           RELEASE_NOTES=""
           if [ -f "CHANGELOG.md" ]; then
-            RELEASE_NOTES=$(awk '/^## Unreleased/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md | sed '/./,$!d' | head -c 10000)
+            RELEASE_NOTES=$(awk '/^## Unreleased/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md | sed '/./,$!d')
+            # A byte budget can land mid-line, and mid-character on anything
+            # outside ASCII, so the partial line the cut leaves is dropped.
+            BOUNDED=$(printf '%s' "${RELEASE_NOTES}" | head -c 10000)
+            if [ "${BOUNDED}" != "${RELEASE_NOTES}" ]; then
+              # A single line longer than the budget has no whole line to keep,
+              # and emptying the notes here would also skip the heading rewrite
+              # below, so the cut text stands in that case.
+              TRIMMED=$(printf '%s' "${BOUNDED}" | sed '$d')
+              RELEASE_NOTES="${TRIMMED:-${BOUNDED}}"
+            fi
             if [ -n "${RELEASE_NOTES}" ]; then
               sed -i "s/^## Unreleased$/## ${VERSION} (${DATE})/" CHANGELOG.md
               sed -i "/^## ${VERSION} (${DATE})$/i\\
@@ -254,10 +308,45 @@ jobs:
           git push --force origin "${BRANCH}" || echo "No changes to push"
 
           sleep 5
-          gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
+          # gh prints the pull request URL as the last line of its output.
+          PR_URL=$(gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:" | tail -n 1)
+          echo "Pull request: ${PR_URL}"
           sleep 5
-          gh pr merge --auto --squash --delete-branch
-          sleep 5
+          gh pr merge "${PR_URL}" --auto --squash --delete-branch
+
+          # Every job after this one renders the default branch and tags it, so
+          # the bump has to have landed there first. A tag cut while auto-merge
+          # was still waiting on the branch's required checks would point at the
+          # previous version's manifest, and `quarto add repo@<version>` would
+          # then install the wrong thing.
+          MERGE_SHA=""
+          DEADLINE=$(( SECONDS + MERGE_TIMEOUT ))
+          while [ "${SECONDS}" -lt "${DEADLINE}" ]; do
+            # Both fields come from one response: read separately, they answer
+            # about two different instants. The merge commit is not always
+            # attached the moment the state flips, so an empty one polls again
+            # rather than carrying the literal "null" forward.
+            INFO=$(gh pr view "${PR_URL}" --json state,mergeCommit --jq '[.state, (.mergeCommit.oid // "")] | @tsv') || INFO=""
+            IFS=$'\t' read -r STATE MERGE_SHA <<< "${INFO}"
+            case "${STATE}" in
+              MERGED)
+                if [ -n "${MERGE_SHA}" ]; then
+                  echo "Merged as ${MERGE_SHA}."
+                  break
+                fi
+                ;;
+              CLOSED)
+                echo "::error::${PR_URL} was closed without merging."
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+
+          if [ -z "${MERGE_SHA}" ]; then
+            echo "::error::${PR_URL} did not merge within ${MERGE_TIMEOUT}s. Auto-merge waits for the branch's required checks, and a push made with the default GITHUB_TOKEN triggers none of them; configure a GitHub App or supply a GH_TOKEN personal access token."
+            exit 1
+          fi
 
           # Build version bump summary
           SUMMARY="## Version Bump\n\n"
@@ -277,12 +366,16 @@ jobs:
             echo "version=${VERSION}"
             echo "release_title=${RELEASE_TITLE}"
             echo "summary=${SUMMARY}"
+            echo "merge_sha=${MERGE_SHA}"
           } >> "${GITHUB_OUTPUT}"
           if [ -n "${RELEASE_NOTES}" ]; then
+            # A changelog is free to contain any fixed delimiter we might pick,
+            # and a line matching it would end the value early.
+            DELIM="RELEASE_NOTES_$(openssl rand -hex 16)"
             {
-              echo "release_notes<<RELEASE_NOTES_DELIM"
+              echo "release_notes<<${DELIM}"
               echo "${RELEASE_NOTES}"
-              echo "RELEASE_NOTES_DELIM"
+              echo "${DELIM}"
             } >> "${GITHUB_OUTPUT}"
           fi
 
@@ -312,16 +405,14 @@ jobs:
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
+      # The commit the bump merged as, rather than whatever the default branch
+      # points at by now: a commit landing in between would otherwise be
+      # rendered and released without ever having been part of the release.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           token: ${{ steps.setup-git-user.outputs.token }}
-
-      - name: Update branch
-        run: |
-          git fetch --all
-          git checkout "${GITHUB_REF_NAME}"
-          git pull origin "${GITHUB_REF_NAME}"
+          ref: ${{ needs.bump-version.outputs.merge_sha }}
 
       # Everything below this point runs code the released project controls:
       # dependency restores, executed chunks, and pre-render and post-render
@@ -576,26 +667,35 @@ jobs:
             SITE_ARCHIVE="gh-pages.tar.gz"
           fi
           tar -czf "${SITE_ARCHIVE}" -C "${OUTPUT_DIRECTORY}" .
-          echo "site_archive=${SITE_ARCHIVE}" >> "${GITHUB_OUTPUT}"
+
+          # The archive is the one asset every release has, so the list the
+          # upload step reads is built from it outwards.
+          ASSET_PATHS=("${SITE_ARCHIVE}")
 
           # Package _extensions/ if present (named as {extension}-v{version}.tar.gz and .zip)
           if [ "${REPO_TYPE}" = "extension" ] && [ -d "_extensions" ]; then
             ASSET_NAME="${EXTENSION_NAME}-v${VERSION}"
             tar -czf "${ASSET_NAME}.tar.gz" _extensions/
             zip -qr "${ASSET_NAME}.zip" _extensions/
-            echo "extensions_asset_exists=true" >> "${GITHUB_OUTPUT}"
-            echo "extensions_asset_name=${ASSET_NAME}" >> "${GITHUB_OUTPUT}"
-          else
-            echo "extensions_asset_exists=false" >> "${GITHUB_OUTPUT}"
+            ASSET_PATHS+=("${ASSET_NAME}.tar.gz" "${ASSET_NAME}.zip")
           fi
 
-          # Check for slides assets (created by post-render script)
+          # The post-render script writes the slides assets, so the directory
+          # existing is what says a deck was converted.
+          SLIDES_EXISTS=false
           if [ -d "release_assets" ]; then
-            echo "slides_assets_exists=true" >> "${GITHUB_OUTPUT}"
-            echo "release_assets_path=$(pwd)/release_assets" >> "${GITHUB_OUTPUT}"
-          else
-            echo "slides_assets_exists=false" >> "${GITHUB_OUTPUT}"
+            SLIDES_EXISTS=true
+            ASSET_PATHS+=("$(pwd)/release_assets")
           fi
+
+          # A fixed delimiter is enough here, unlike the release notes above:
+          # every element is a path this step just built.
+          {
+            echo "slides_assets_exists=${SLIDES_EXISTS}"
+            echo "asset_paths<<ASSET_PATHS_DELIM"
+            printf '%s\n' "${ASSET_PATHS[@]}"
+            echo "ASSET_PATHS_DELIM"
+          } >> "${GITHUB_OUTPUT}"
 
       # Skipped when the repository has a documentation website: the deploy-pages
       # job below publishes docs/ from the release tag instead, and the render
@@ -612,43 +712,12 @@ jobs:
         with:
           path: "${{ steps.detect-project-dir.outputs.output_directory }}"
 
-      - name: Upload release assets (slides + extensions)
+      - name: Upload release assets
         uses: actions/upload-artifact@v7
-        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' && steps.render-quarto.outputs.extensions_asset_exists == 'true' }}
         with:
           name: release-assets
           path: |
-            ${{ steps.render-quarto.outputs.release_assets_path }}
-            ${{ steps.render-quarto.outputs.site_archive }}
-            ${{ steps.render-quarto.outputs.extensions_asset_name }}.tar.gz
-            ${{ steps.render-quarto.outputs.extensions_asset_name }}.zip
-
-      - name: Upload release assets (extensions only)
-        uses: actions/upload-artifact@v7
-        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'false' && steps.render-quarto.outputs.extensions_asset_exists == 'true' }}
-        with:
-          name: release-assets
-          path: |
-            ${{ steps.render-quarto.outputs.site_archive }}
-            ${{ steps.render-quarto.outputs.extensions_asset_name }}.tar.gz
-            ${{ steps.render-quarto.outputs.extensions_asset_name }}.zip
-
-      - name: Upload release assets (slides only)
-        uses: actions/upload-artifact@v7
-        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' && steps.render-quarto.outputs.extensions_asset_exists == 'false' }}
-        with:
-          name: release-assets
-          path: |
-            ${{ steps.render-quarto.outputs.release_assets_path }}
-            ${{ steps.render-quarto.outputs.site_archive }}
-
-      - name: Upload release assets (default)
-        uses: actions/upload-artifact@v7
-        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'false' && steps.render-quarto.outputs.extensions_asset_exists == 'false' }}
-        with:
-          name: release-assets
-          path: |
-            ${{ steps.render-quarto.outputs.site_archive }}
+            ${{ steps.render-quarto.outputs.asset_paths }}
 
       # A GitHub App token lasts an hour, and this job spends that hour
       # installing runtimes and rendering before it pushes anything, so the one
@@ -678,19 +747,29 @@ jobs:
             git remote set-url origin "https://x-access-token:${GH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
 
             mv -f "${OUTPUT_DIRECTORY}/index.png" .github/template.png
-            if git show-ref --quiet "refs/heads/${BRANCH}"; then
-              echo "Branch ${BRANCH} already exists."
-              git branch -D "${BRANCH}"
-              git push origin --delete "${BRANCH}"
+            # As for the bump branch: the branch only ever exists on the remote,
+            # and a pull request left open by an earlier run would make
+            # `gh pr create` below fail.
+            if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
+              echo "Remote branch ${BRANCH} already exists; it will be force-pushed."
+              STALE_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
+              if [ -n "${STALE_PR}" ]; then
+                echo "Closing the stale pull request #${STALE_PR}."
+                gh pr close "${STALE_PR}"
+              fi
             fi
-            git checkout -b "${BRANCH}"
+            git checkout -B "${BRANCH}"
             git add .github/template.png || echo "No changes to add"
             if ! git diff --cached --quiet; then
               git commit -m "${COMMIT}"
               git push --force origin "${BRANCH}"
-              gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
+              PR_URL=$(gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:" | tail -n 1)
+              echo "Pull request: ${PR_URL}"
               sleep 5
-              gh pr merge --auto --squash --delete-branch
+              # Named rather than inferred from the checked-out branch, as the
+              # bump job does. Nothing waits on this one: the thumbnail is not
+              # part of the release being cut.
+              gh pr merge "${PR_URL}" --auto --squash --delete-branch
               sleep 5
             else
               echo "No changes to commit."
@@ -769,16 +848,13 @@ jobs:
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
+      # The same commit the deploy job rendered, and what the tag below points
+      # at, so the render, the tag, and the release all describe one commit.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           token: ${{ steps.setup-git-user.outputs.token }}
-
-      - name: Update branch
-        run: |
-          git fetch --all
-          git checkout "${GITHUB_REF_NAME}"
-          git pull origin "${GITHUB_REF_NAME}"
+          ref: ${{ needs.bump-version.outputs.merge_sha }}
 
       - name: Download release assets
         id: download-release-assets-artifact
@@ -794,6 +870,7 @@ jobs:
           RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
           RELEASE_NOTES: ${{ needs.bump-version.outputs.release_notes }}
           REPO_TYPE: ${{ needs.bump-version.outputs.repo_type }}
+          MERGE_SHA: ${{ needs.bump-version.outputs.merge_sha }}
         shell: bash
         run: |
           assets=()
@@ -833,6 +910,7 @@ jobs:
           } > release_notes.md
 
           gh release create "${VERSION}" \
+            --target "${MERGE_SHA}" \
             --title "${RELEASE_TITLE}" \
             --notes-file release_notes.md \
             "${assets[@]}"

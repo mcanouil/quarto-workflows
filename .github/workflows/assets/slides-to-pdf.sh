@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 
-set -e
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
 
-# if [ -z "${QUARTO_PROJECT_RENDER_ALL}" ]; then
-#   exit 0
-# fi
+# Quarto post-render script: turns every Reveal.js deck the project rendered into
+# a PDF and a thumbnail, and stages both for release when running in CI.
 
-# CHROME_PATH_ARG=""
-# if [ -n "${QUARTO_CHROMIUM}" ]; then
-#   CHROME_PATH_ARG="--chrome-path=${QUARTO_CHROMIUM}"
-# fi
+set -euo pipefail
 
 QUARTO_OUTPUT_DIRECTORY=${OUTPUT_DIRECTORY:-"_site"}
 
-HTML_FILES=$(echo "${QUARTO_PROJECT_OUTPUT_FILES}" | tr ' ' '\n' | grep -E '\.html$' || true)
+HTML_FILES=$(echo "${QUARTO_PROJECT_OUTPUT_FILES:-}" | tr ' ' '\n' | grep -E '\.html$' || true)
 
 if [ -z "${HTML_FILES}" ]; then
   exit 0
@@ -28,15 +26,17 @@ done
 
 SLIDES_FILES=$(echo "${SLIDES_FILES}" | xargs)
 
-if [ "${CI}" == "true" ] && [ -n "${SLIDES_FILES}" ]; then
+if [ "${CI:-}" = "true" ] && [ -n "${SLIDES_FILES}" ]; then
   mkdir -p release_assets
 fi
 
 for SLIDES_PATH in ${SLIDES_FILES}; do
   echo "Processing ${SLIDES_PATH}"
 
-  PDF_AUTHOR=$(grep -o '<meta name="author" content="[^"]*"' "${SLIDES_PATH}" | sed 's/<meta name="author" content="\(.*\)"/\1/')
-  PDF_TITLE=$(grep -o '<title>.*</title>' "${SLIDES_PATH}" | sed 's/<title>\(.*\)<\/title>/\1/')
+  # A deck is free to declare neither, and a deck without an author is not a
+  # reason to abandon the conversion.
+  PDF_AUTHOR=$(grep -o '<meta name="author" content="[^"]*"' "${SLIDES_PATH}" | sed 's/<meta name="author" content="\(.*\)"/\1/' || true)
+  PDF_TITLE=$(grep -o '<title>.*</title>' "${SLIDES_PATH}" | sed 's/<title>\(.*\)<\/title>/\1/' || true)
 
   sed "s/el.parentElement.parentElement.parentElement;/el.parentElement.parentElement.parentElement.parentElement;/g;" "${SLIDES_PATH}" > "${SLIDES_PATH}.decktape.html"
 
@@ -69,7 +69,7 @@ for SLIDES_PATH in ${SLIDES_FILES}; do
   rm -f "${SLIDES_PATH}.decktape.html"
 
   # Move the generated PDF to a file named after the current directory, in the same output directory
-  if [ "${CI}" == "true" ]; then
+  if [ "${CI:-}" = "true" ]; then
     SLIDES_OUTPUT_DIRECTORY=$(dirname "${SLIDES_PATH}")
     SLIDES_PATH_NO_EXT="${SLIDES_PATH%.html}"
     SLIDES_BASENAME=$(basename "${SLIDES_PATH_NO_EXT}")

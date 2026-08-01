@@ -1,3 +1,7 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
 name: Setup Git User
 description: Create GitHub App token and configure git user identity.
 
