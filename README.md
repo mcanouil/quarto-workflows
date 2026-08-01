@@ -34,6 +34,7 @@ Both repo types record the release version and date in `CITATION.cff`, so the fi
 | `repo-type` | `"auto"`    | Repo type (`auto`/`extension`/`project`). `auto` detects from the repo name and owned manifest.     |
 | `quarto`    | `"release"` | Quarto version to install (`release` or `pre-release`).                                             |
 | `gh-app-id` |             | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable.        |
+| `merge-timeout` | `1800`  | Seconds to wait for the version bump pull request to merge.                                        |
 
 #### Authentication
 
@@ -54,7 +55,7 @@ A project that resolves a private GitHub dependency from `renv.lock`, `pyproject
 
 Two limitations apply to the `GITHUB_TOKEN` path only.
 
-- A push made with `GITHUB_TOKEN` triggers no workflow, so the version bump pull request receives no checks. Where the default branch requires status checks, `gh pr merge --auto` then never completes, and the release fails after waiting 30 minutes rather than tagging a commit that was never bumped. Configure a GitHub App, or supply a `GH_TOKEN` personal access token.
+- A push made with `GITHUB_TOKEN` triggers no workflow, so the version bump pull request receives no checks. Where the default branch requires status checks, `gh pr merge --auto` then never completes. The release fails rather than tagging a commit that was never bumped, and says so within a couple of minutes: a pull request that is blocked with no check of any kind reported against it is waiting for something that cannot arrive. Configure a GitHub App, or supply a `GH_TOKEN` personal access token. A branch that requires a review as well is left to `merge-timeout`, since that block is a person rather than a configuration.
 - Creating the version bump pull request needs the repository setting "Allow GitHub Actions to create and approve pull requests", under Settings, Actions, General. Without it `gh pr create` fails.
 
 #### Example

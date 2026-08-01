@@ -33,6 +33,11 @@ on:
         description: "GitHub App ID"
         required: false
         type: string
+      merge-timeout:
+        description: "Seconds to wait for the version bump pull request to merge"
+        required: false
+        default: 1800
+        type: number
 
 permissions:
   contents: write
@@ -67,10 +72,10 @@ jobs:
       BRANCH: ci/bump-version
       COMMIT: "ci: bump version for release :rocket:"
       BUMP_VERSION: ${{ inputs.version }}
-      # How long to wait for the bump pull request to merge. Auto-merge waits
-      # for whatever checks the default branch requires, so this has to cover a
-      # full check suite.
-      MERGE_TIMEOUT: "1800"
+      # Auto-merge waits for whatever checks the default branch requires, so a
+      # repository whose suite outlasts the default raises this rather than
+      # forking the workflow.
+      MERGE_TIMEOUT: ${{ inputs.merge-timeout }}
 
     outputs:
       version: ${{ steps.bump-version.outputs.version }}
@@ -321,15 +326,24 @@ jobs:
           # then install the wrong thing.
           MERGE_SHA=""
           DEADLINE=$(( SECONDS + MERGE_TIMEOUT ))
+          # Long enough that GitHub has created any check run it was going to.
+          BLOCKED_AFTER=$(( SECONDS + 120 ))
+          # Every field comes from one response: read separately they would
+          # answer about different instants. Joined on a character none of them
+          # can contain, since bash collapses runs of a whitespace separator and
+          # would shift an empty field into its neighbour.
+          POLL='[.state, (.mergeCommit.oid // ""), (.mergeStateStatus // ""), (.reviewDecision // ""), (.statusCheckRollup | length)] | map(tostring) | join("|")'
           while [ "${SECONDS}" -lt "${DEADLINE}" ]; do
-            # Both fields come from one response: read separately, they answer
-            # about two different instants. The merge commit is not always
-            # attached the moment the state flips, so an empty one polls again
-            # rather than carrying the literal "null" forward.
-            INFO=$(gh pr view "${PR_URL}" --json state,mergeCommit --jq '[.state, (.mergeCommit.oid // "")] | @tsv') || INFO=""
-            IFS=$'\t' read -r STATE MERGE_SHA <<< "${INFO}"
+            INFO=$(gh pr view "${PR_URL}" \
+              --json state,mergeCommit,mergeStateStatus,reviewDecision,statusCheckRollup \
+              --jq "${POLL}") || INFO=""
+            IFS='|' read -r STATE MERGE_SHA MERGE_STATE REVIEW CHECKS <<< "${INFO}"
+
             case "${STATE}" in
               MERGED)
+                # The merge commit is not always attached the moment the state
+                # flips, so an empty one polls again rather than carrying the
+                # literal "null" forward.
                 if [ -n "${MERGE_SHA}" ]; then
                   echo "Merged as ${MERGE_SHA}."
                   break
@@ -340,11 +354,27 @@ jobs:
                 exit 1
                 ;;
             esac
+
+            # A push made with the default GITHUB_TOKEN triggers no workflow, so
+            # where the branch requires status checks none are ever created and
+            # auto-merge waits for something that cannot arrive. Waiting out the
+            # timeout to say so costs the whole budget in billed runner time, so
+            # the pull request being blocked with no check of any kind against it
+            # is taken as the answer. A branch that also wants a review is left
+            # to the timeout: that block is a person, not a configuration.
+            if [ "${SECONDS}" -ge "${BLOCKED_AFTER}" ] &&
+              [ "${MERGE_STATE}" = "BLOCKED" ] &&
+              [ "${CHECKS}" = "0" ] &&
+              [ "${REVIEW}" != "REVIEW_REQUIRED" ]; then
+              echo "::error::${PR_URL} is blocked and nothing has reported a check against it. The default branch requires status checks and the push that opened the pull request triggered none: configure a GitHub App, or supply a GH_TOKEN personal access token."
+              exit 1
+            fi
+
             sleep 10
           done
 
           if [ -z "${MERGE_SHA}" ]; then
-            echo "::error::${PR_URL} did not merge within ${MERGE_TIMEOUT}s. Auto-merge waits for the branch's required checks, and a push made with the default GITHUB_TOKEN triggers none of them; configure a GitHub App or supply a GH_TOKEN personal access token."
+            echo "::error::${PR_URL} did not merge within ${MERGE_TIMEOUT}s. Raise the merge-timeout input if the branch's required checks simply take longer than that."
             exit 1
           fi
 
