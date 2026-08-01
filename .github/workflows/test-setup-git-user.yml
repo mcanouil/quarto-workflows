@@ -1,0 +1,133 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
+name: Test Setup Git User
+
+# A GitHub App is optional, so the action has to resolve an identity and a token
+# whether or not one is configured, and say so rather than fail when only half
+# of a GitHub App is available. Each of those paths is exercised here.
+on:
+  pull_request:
+    paths:
+      - ".github/actions/setup-git-user/**"
+      - ".github/workflows/test-setup-git-user.yml"
+      - ".github/workflows/assets/assert-git-identity.sh"
+  workflow_dispatch:
+  schedule:
+    - cron: "30 5 1 * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # A job-level `if` cannot read `secrets`, and a pull request from a fork sees
+  # none, so whether the GitHub App path can run at all is decided here.
+  check-app:
+    name: Check for App credentials
+    runs-on: ubuntu-latest
+
+    outputs:
+      has-app: ${{ steps.check.outputs.has-app }}
+
+    steps:
+      - name: Check for App credentials
+        id: check
+        env:
+          APP_ID: ${{ vars.APP_ID }}
+          APP_KEY: ${{ secrets.APP_KEY }}
+        shell: bash
+        run: |
+          if [ -n "${APP_ID}" ] && [ -n "${APP_KEY}" ]; then
+            HAS_APP=true
+          else
+            HAS_APP=false
+            echo "No App credentials available; the App path is skipped."
+          fi
+          echo "has-app=${HAS_APP}" >> "${GITHUB_OUTPUT}"
+
+  fallback:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: No App credentials
+            gh-app-id: ""
+          # The regression guard for a repository that carries the App id in a
+          # variable but has no key: the action warns and falls back rather than
+          # failing on the key create-github-app-token requires.
+          - label: App id without a key
+            gh-app-id: "Iv1.0000000000000000"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Git User
+        id: setup-git-user
+        uses: ./.github/actions/setup-git-user
+        with:
+          gh-app-id: ${{ matrix.gh-app-id }}
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assert the fallback identity
+        env:
+          TOKEN: ${{ steps.setup-git-user.outputs.token }}
+        shell: bash
+        run: .github/workflows/assets/assert-git-identity.sh fallback
+
+  app:
+    name: App credentials
+    runs-on: ubuntu-latest
+
+    needs: check-app
+    if: ${{ needs.check-app.outputs.has-app == 'true' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Git User
+        id: setup-git-user
+        uses: ./.github/actions/setup-git-user
+        with:
+          gh-app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assert the App identity
+        env:
+          TOKEN: ${{ steps.setup-git-user.outputs.token }}
+        shell: bash
+        run: .github/workflows/assets/assert-git-identity.sh app
+
+  no-credentials:
+    name: No credentials at all
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Git User
+        id: setup-git-user
+        continue-on-error: true
+        uses: ./.github/actions/setup-git-user
+
+      - name: Assert the action failed
+        env:
+          OUTCOME: ${{ steps.setup-git-user.outcome }}
+        shell: bash
+        run: |
+          if [ "${OUTCOME}" != "failure" ]; then
+            echo "::error::Expected the action to fail without credentials, got '${OUTCOME}'"
+            exit 1
+          fi
+          echo "The action refused to run without credentials."

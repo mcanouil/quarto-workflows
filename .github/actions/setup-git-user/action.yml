@@ -23,10 +23,36 @@ outputs:
 runs:
   using: composite
   steps:
+    # A GitHub App is optional, and half of one is not usable: create-github-app-token
+    # declares private-key as required, so a caller carrying the App id in a
+    # repository variable but no key would fail here rather than fall back.
+    # Deciding the path up front keeps a missing key a warning.
+    - name: Resolve the credentials to use
+      id: credentials
+      env:
+        APP_ID: ${{ inputs.gh-app-id }}
+        APP_KEY: ${{ inputs.app-key }}
+        FALLBACK_TOKEN: ${{ inputs.gh-token }}
+      shell: bash
+      run: |
+        USE_APP=false
+        if [ -n "${APP_ID}" ] && [ -n "${APP_KEY}" ]; then
+          USE_APP=true
+        elif [ -n "${APP_ID}" ]; then
+          echo "::warning::gh-app-id was provided without app-key; falling back to gh-token and the github-actions[bot] identity."
+        fi
+
+        if [ "${USE_APP}" = "false" ] && [ -z "${FALLBACK_TOKEN}" ]; then
+          echo "::error::No credentials were provided: pass gh-app-id together with app-key, or pass gh-token."
+          exit 1
+        fi
+
+        echo "use-app=${USE_APP}" >> "${GITHUB_OUTPUT}"
+
     - name: Create GitHub App token
       uses: actions/create-github-app-token@v3
       id: app-token
-      if: ${{ inputs.gh-app-id != '' }}
+      if: ${{ steps.credentials.outputs.use-app == 'true' }}
       with:
         client-id: ${{ inputs.gh-app-id }}
         private-key: ${{ inputs.app-key }}
@@ -47,7 +73,14 @@ runs:
         USER_ID: ${{ steps.get-user-id.outputs.user-id }}
       shell: bash
       run: |
-        if [ -z "${APP_SLUG}" ]; then
+        # The App identity needs the numeric user id to form the noreply address,
+        # so a lookup that came back empty falls back rather than committing as
+        # the malformed "+slug[bot]@users.noreply.github.com".
+        if [ -n "${APP_SLUG}" ] && [ -z "${USER_ID}" ]; then
+          echo "::warning::Could not resolve the user id for ${APP_SLUG}[bot]; using the github-actions[bot] identity."
+        fi
+
+        if [ -z "${APP_SLUG}" ] || [ -z "${USER_ID}" ]; then
           USER_NAME="github-actions[bot]"
           USER_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
         else
@@ -56,3 +89,4 @@ runs:
         fi
         git config --global user.name "${USER_NAME}"
         git config --global user.email "${USER_EMAIL}"
+        echo "Git identity: ${USER_NAME} <${USER_EMAIL}>"

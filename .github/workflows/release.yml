@@ -36,6 +36,13 @@ permissions:
   id-token: write
   pages: write
 
+# Every job resolves its own token, and each has to be told the same App id, so
+# it is derived once here rather than in each of the four calls. The key and the
+# fallback token stay at the call sites, since a workflow-level `env` cannot
+# read `secrets`.
+env:
+  APP_ID: ${{ inputs.gh-app-id || vars.APP_ID }}
+
 jobs:
   bump-version:
     runs-on: ubuntu-latest
@@ -55,16 +62,23 @@ jobs:
       has_docs: ${{ steps.detect-project.outputs.has_docs }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
+      # Before the checkout, so the branch this job pushes carries the resolved
+      # identity. The action needs no working tree of its own. A push made with
+      # the default GITHUB_TOKEN triggers no workflow, which leaves the version
+      # bump pull request without the checks its auto-merge waits for, so a
+      # repository with a GitHub App pushes as the App instead.
       - name: Setup Git User
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
-          gh-app-id: ${{ inputs.gh-app-id }}
+          gh-app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.setup-git-user.outputs.token }}
 
       - name: Detect project type
         id: detect-project
@@ -290,16 +304,18 @@ jobs:
       summary: ${{ steps.deployment-summary.outputs.summary }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
       - name: Setup Git User
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
-          gh-app-id: ${{ inputs.gh-app-id }}
+          gh-app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.setup-git-user.outputs.token }}
 
       - name: Update branch
         run: |
@@ -610,16 +626,34 @@ jobs:
           path: |
             ${{ steps.render-quarto.outputs.site_archive }}
 
+      # A GitHub App token lasts an hour, and this job spends that hour
+      # installing runtimes and rendering before it pushes anything, so the one
+      # the checkout is holding may well have expired by now.
+      - name: Refresh the token before pushing
+        id: refresh-git-user
+        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
+        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
+        with:
+          gh-app-id: ${{ env.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
       - name: Update template thumbnail
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
         env:
-          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
+          GH_TOKEN: ${{ steps.refresh-git-user.outputs.token }}
           OUTPUT_DIRECTORY: ${{ steps.detect-project-dir.outputs.output_directory }}
           BRANCH: ci/update-thumbs
           COMMIT: "ci: update thumbs :art:"
         shell: bash
         run: |
           if [ -f "${OUTPUT_DIRECTORY}/index.png" ]; then
+            # actions/checkout left the token it was given in an http extraheader,
+            # which wins over anything in the remote URL, so the stale one has to
+            # go before the fresh one can be used.
+            git config --local --unset-all "http.https://github.com/.extraheader" || true
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
             mv -f "${OUTPUT_DIRECTORY}/index.png" .github/template.png
             if git show-ref --quiet "refs/heads/${BRANCH}"; then
               echo "Branch ${BRANCH} already exists."
@@ -704,16 +738,18 @@ jobs:
       - deploy
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
       - name: Setup Git User
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
-          gh-app-id: ${{ inputs.gh-app-id }}
+          gh-app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.setup-git-user.outputs.token }}
 
       - name: Update branch
         run: |
