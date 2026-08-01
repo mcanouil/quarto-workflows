@@ -162,7 +162,9 @@ A composite action that reads what a Quarto project needs from `quarto inspect`,
 It is used by both `release.yml` and `pages.yml`, and expects Quarto to be installed already, along with any extension the project resolves.
 
 Engines come from the project-level inspection, so `.qmd`, `.ipynb`, and `.md` inputs all count.
-Formats come from a second pass over the `.qmd` inputs, since a project inspection reports none.
+Formats are derived from that same inspection rather than from a pass over every input, since a project inspection reports engines but no resolved formats.
+They are collected from the project configuration, the front matter of each `.qmd` input, and the `_metadata.yml` files above it, which is where Quarto itself reads them from.
+Reading those `_metadata.yml` files needs `yq`, which the GitHub-hosted runners provide.
 Dependency manifests are looked up in the project directory first and the repository root second, which is how a `docs/` website renders with a `pyproject.toml` or `renv.lock` kept at the root.
 
 A Python environment is left activated by `uv`, so later steps render with it without sourcing anything.

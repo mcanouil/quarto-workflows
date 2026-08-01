@@ -1,0 +1,5 @@
+project:
+  output-dir: _site
+format:
+  html: default
+  docx: default
