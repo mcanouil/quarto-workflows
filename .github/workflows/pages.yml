@@ -61,7 +61,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           # The whole history, so the latest version tag can be resolved below.
-          fetch-depth: 0
+          # A pull request renders its own head and skips that resolution, so it
+          # takes the shallow clone instead.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 1 || 0 }}
           ref: ${{ inputs.ref }}
 
       # A pull request renders its own head, so a broken page is caught before
@@ -113,21 +115,6 @@ jobs:
 
       - name: Render site
         run: quarto render docs
-
-      - name: Add render summary
-        env:
-          FORMATS: ${{ steps.compute.outputs.formats }}
-          ENGINES: ${{ steps.compute.outputs.engines }}
-        shell: bash
-        run: |
-          {
-            echo "## Documentation render"
-            echo ""
-            echo "| Field | Value |"
-            echo "|-------|--------|"
-            echo "| Output Formats | \`${FORMATS}\` |"
-            echo "| Engines | \`${ENGINES}\` |"
-          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload site artifact
         if: ${{ github.event_name != 'pull_request' }}
