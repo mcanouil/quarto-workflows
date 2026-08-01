@@ -332,8 +332,7 @@ jobs:
       - name: Drop the git credentials before running project code
         shell: bash
         run: |
-          # actions/checkout names the key after the server it cloned from, so
-          # the key is derived the same way rather than spelled out.
+          # The key actions/checkout derives from the server it cloned from.
           git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" || true
 
           # An unset that matched nothing exits non-zero and would be swallowed
@@ -450,6 +449,10 @@ jobs:
           sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
           sparse-checkout-cone-mode: false
           path: workflows
+          # Only the script is wanted, and it is read as a plain file rather
+          # than through git, so this checkout does not undo the credential
+          # drop above by persisting a token of its own beside the render.
+          persist-credentials: false
 
       - name: Exclude CHANGELOG.md from render
         env:
@@ -670,8 +673,9 @@ jobs:
         run: |
           if [ -f "${OUTPUT_DIRECTORY}/index.png" ]; then
             # The credentials the checkout left behind were dropped before the
-            # render, so this push carries the refreshed token instead.
-            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            # render, so this push carries the refreshed token instead. The host
+            # is derived rather than spelled out, as it is for the key above.
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
 
             mv -f "${OUTPUT_DIRECTORY}/index.png" .github/template.png
             if git show-ref --quiet "refs/heads/${BRANCH}"; then
