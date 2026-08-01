@@ -417,6 +417,9 @@ jobs:
       - name: Exclude CHANGELOG.md from render
         env:
           PROJECT_DIR: ${{ steps.detect-project-dir.outputs.project_dir }}
+          # The inputs detection already read, rather than a third inspection of
+          # the same project. Nothing between the two steps touches _quarto.yml.
+          INPUT_FILES: ${{ steps.compute.outputs.input-files }}
         shell: bash
         run: |
           QUARTO_YML="${PROJECT_DIR}/_quarto.yml"
@@ -432,7 +435,7 @@ jobs:
           if yq eval '.project.render' "${QUARTO_YML}" | grep -q "null"; then
             # No render targets: rebuild the default input set minus CHANGELOG.md.
             # An exclusion-only list would render nothing, so we list includes explicitly.
-            mapfile -t INPUTS < <(quarto inspect "${PROJECT_DIR}" | jq -r '.files.input[]')
+            mapfile -t INPUTS < <(printf '%s\n' "${INPUT_FILES}" | sed '/^$/d')
             RENDER=()
             for f in "${INPUTS[@]}"; do
               rel=$(realpath --relative-to="${PROJECT_DIR}" "${f}")
@@ -449,7 +452,7 @@ jobs:
                 yq eval ".project.render += [\"${rel}\"]" -i "${QUARTO_YML}"
               done
             else
-              echo "No inputs detected from quarto inspect; leaving render targets unchanged."
+              echo "No inputs were detected; leaving render targets unchanged."
             fi
           else
             # Render targets already defined: append the exclusion if not present.

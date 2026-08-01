@@ -37,6 +37,9 @@ outputs:
   need-tinytex:
     description: "Whether a LaTeX-bound format is produced"
     value: ${{ steps.inspect.outputs.need-tinytex }}
+  input-files:
+    description: "Newline-separated input files the project renders, as absolute paths"
+    value: ${{ steps.inspect.outputs.input-files }}
 
 runs:
   using: composite
@@ -58,10 +61,10 @@ runs:
             exit 1
           fi
           ENGINES=$(echo "${PROJECT_JSON}" | jq -r '.engines[]?' | sort -u | xargs)
-          INPUT_FILES=$(echo "${PROJECT_JSON}" | jq -r '.files.input[]? | select(endswith(".qmd"))')
+          INPUT_FILES=$(echo "${PROJECT_JSON}" | jq -r '.files.input[]?')
 
           FILE_FORMATS=""
-          for qmd_file in ${INPUT_FILES}; do
+          for qmd_file in $(echo "${INPUT_FILES}" | grep '\.qmd$' || true); do
             if ! FILE_JSON=$(quarto inspect "${qmd_file}" 2>&1); then
               echo "::warning::quarto inspect failed for '${qmd_file}'; its formats are not accounted for"
               continue
@@ -77,6 +80,7 @@ runs:
           fi
           ENGINES=$(echo "${FILE_JSON}" | jq -r '.engines[]?' | sort -u | xargs)
           FORMATS=$(echo "${FILE_JSON}" | jq -r '.formats // {} | keys[]' | sort -u | xargs)
+          INPUT_FILES="${INSPECT_PATH}"
         fi
 
         NEED_R=false
@@ -114,6 +118,9 @@ runs:
           echo "need-python=${NEED_PYTHON}"
           echo "need-julia=${NEED_JULIA}"
           echo "need-tinytex=${NEED_TINYTEX}"
+          echo "input-files<<INPUT_FILES_DELIM"
+          echo "${INPUT_FILES}"
+          echo "INPUT_FILES_DELIM"
         } >> "${GITHUB_OUTPUT}"
 
     # A documentation website lives under docs/ while the dependency manifests
