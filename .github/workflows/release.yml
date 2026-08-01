@@ -332,7 +332,17 @@ jobs:
       - name: Drop the git credentials before running project code
         shell: bash
         run: |
-          git config --local --unset-all "http.https://github.com/.extraheader" || true
+          # actions/checkout names the key after the server it cloned from, so
+          # the key is derived the same way rather than spelled out.
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" || true
+
+          # An unset that matched nothing exits non-zero and would be swallowed
+          # above, leaving the render holding a token. Fail loudly instead.
+          if git config --local --name-only --get-regexp '^http\..*\.extraheader$'; then
+            echo "::error::Credentials are still present in .git/config."
+            exit 1
+          fi
+          echo "No credentials remain in .git/config."
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
