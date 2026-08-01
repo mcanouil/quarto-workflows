@@ -1,0 +1,9 @@
+---
+title: "Julia"
+---
+
+A cell in Julia, so detection reports the `julia` engine.
+
+```{julia}
+1 + 1
+```

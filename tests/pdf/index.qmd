@@ -1,0 +1,13 @@
+---
+title: "PDF"
+format: pdf
+---
+
+A LaTeX-bound format with no computation, so TinyTeX is installed and no engine is.
+
+Some text, and a diagram Quarto renders through Chrome.
+
+```{mermaid}
+flowchart LR
+  A --> B
+```

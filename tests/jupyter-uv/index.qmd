@@ -1,0 +1,9 @@
+---
+title: "Jupyter with a manifest"
+---
+
+A cell in Python beside a `pyproject.toml`, so `uv sync` runs and provides the interpreter.
+
+```{python}
+1 + 1
+```

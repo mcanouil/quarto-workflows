@@ -190,10 +190,39 @@ runs:
         google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null
         echo "Google Chrome is working properly."
 
-    - name: Install TinyTeX
+    # TinyTeX grows as tlmgr pulls what a render turns out to need, and the
+    # cache is written at the end of the job, so the packages a render added are
+    # carried into the next one. The key is unique per run and restored by
+    # prefix, so each run starts from the most recent state rather than a fixed
+    # snapshot.
+    - name: Cache TinyTeX
+      id: tinytex-cache
       if: ${{ steps.inspect.outputs.need-tinytex == 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: ~/.TinyTeX
+        key: tinytex-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: tinytex-${{ runner.os }}-
+
+    - name: Install TinyTeX
+      if: ${{ steps.inspect.outputs.need-tinytex == 'true' && steps.tinytex-cache.outputs.cache-matched-key == '' }}
       shell: bash
       run: quarto install tinytex --update-path
+
+    # --update-path writes to the shell profile, which a later step does not
+    # read, and a restored TinyTeX never ran the installer at all. Both cases
+    # therefore land on PATH here.
+    - name: Put TinyTeX on PATH
+      if: ${{ steps.inspect.outputs.need-tinytex == 'true' }}
+      shell: bash
+      run: |
+        TINYTEX_BIN=$(echo "${HOME}"/.TinyTeX/bin/*)
+        if [ ! -d "${TINYTEX_BIN}" ]; then
+          echo "::error::TinyTeX has no bin directory at ${TINYTEX_BIN}"
+          exit 1
+        fi
+        echo "TinyTeX: ${TINYTEX_BIN}"
+        echo "${TINYTEX_BIN}" >> "${GITHUB_PATH}"
 
     - name: Set up R
       if: ${{ steps.inspect.outputs.need-r == 'true' }}

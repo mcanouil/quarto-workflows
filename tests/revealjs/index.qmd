@@ -1,0 +1,12 @@
+---
+title: "Slides"
+format: revealjs
+---
+
+## First
+
+Slides for the decktape conversion the release workflow performs.
+
+## Second
+
+Nothing here computes, so no engine is installed.
