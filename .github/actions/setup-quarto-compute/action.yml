@@ -179,15 +179,20 @@ runs:
       if: ${{ inputs.chromium == 'true' || (inputs.chromium == 'auto' && steps.inspect.outputs.need-tinytex == 'true') }}
       shell: bash
       run: |
-        if google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null 2>&1; then
-          echo "Google Chrome is working properly."
-          exit 0
+        chrome_starts() {
+          google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null 2>&1
+        }
+
+        if ! chrome_starts; then
+          echo "Google Chrome failed to start; installing the libraries it links against."
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1
+          if ! chrome_starts; then
+            echo "::error::Google Chrome still fails to start after installing its libraries"
+            exit 1
+          fi
         fi
 
-        echo "Google Chrome failed to start; installing the libraries it links against."
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1
-        google-chrome --headless=new --no-sandbox --disable-gpu --dump-dom about:blank > /dev/null
         echo "Google Chrome is working properly."
 
     # TinyTeX grows as tlmgr pulls what a render turns out to need, and the

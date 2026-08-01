@@ -172,17 +172,19 @@ jobs:
         shell: bash
         run: npm install -g decktape
 
+      # Quarto runs a post-render script from the project directory, so the
+      # script is referenced relative to it and writes its assets there too.
       - name: Render the deck with the slides post-render script
         shell: bash
         run: |
-          yq eval '.project.post-render = [".github/workflows/assets/slides-to-pdf.sh"]' -i tests/revealjs/_quarto.yml
+          yq eval '.project.post-render = ["../../.github/workflows/assets/slides-to-pdf.sh"]' -i tests/revealjs/_quarto.yml
           quarto render tests/revealjs
 
       - name: Assert the deck was converted
         shell: bash
         run: |
           FAILED=false
-          for asset in release_assets/revealjs.pdf release_assets/revealjs.png; do
+          for asset in tests/revealjs/release_assets/revealjs.pdf tests/revealjs/release_assets/revealjs.png; do
             if [ ! -s "${asset}" ]; then
               echo "::error::${asset} is missing or empty"
               FAILED=true
@@ -190,7 +192,7 @@ jobs:
           done
 
           if [ "${FAILED}" = "true" ]; then
-            ls -R release_assets tests/revealjs/_site || true
+            ls -R tests/revealjs || true
             exit 1
           fi
           echo "Decktape produced the PDF and the thumbnail."
