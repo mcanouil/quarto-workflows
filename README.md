@@ -30,19 +30,26 @@ Key features include:
 | `version`   | `"minor"`   | Version bump type (`patch`/`minor`/`major`). Used for extensions only; ignored for projects.        |
 | `repo-type` | `"auto"`    | Repo type (`auto`/`extension`/`project`). `auto` detects from the repo name and owned manifest.     |
 | `quarto`    | `"release"` | Quarto version to install (`release` or `pre-release`).                                             |
-| `gh-app-id` |             | GitHub App ID for authentication (optional).                                                        |
+| `gh-app-id` |             | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable.        |
 
-#### Secrets
+#### Authentication
 
-The workflow accepts secrets via `secrets: inherit`.
-When a GitHub App is used for authentication (recommended), the following secrets should be configured in the calling repository:
+A GitHub App is optional.
+The workflow resolves one token per job through the [`setup-git-user`](#setup-git-user) action and uses it for every `gh` call, and for the checkout it pushes from, so the version bump and the thumbnail update are attributed to whichever identity was resolved.
 
-| Secret    | Description                                                                                                   |
-| --------- | ------------------------------------------------------------------------------------------------------------- |
-| `APP_KEY` | GitHub App private key. Required when `gh-app-id` is provided. Used to generate tokens for GitHub operations. |
+| Configuration                                      | Token                             | Identity                |
+| -------------------------------------------------- | --------------------------------- | ----------------------- |
+| `gh-app-id` (or the `APP_ID` variable) and `APP_KEY` | GitHub App installation token     | `<app-slug>[bot]`       |
+| `GH_TOKEN` secret                                  | The personal access token supplied | `github-actions[bot]`   |
+| Neither                                            | The default `GITHUB_TOKEN`        | `github-actions[bot]`   |
 
-Alternatively, if not using a GitHub App, the workflow falls back to the default `GITHUB_TOKEN`.
-A `GH_TOKEN` secret (personal access token) can also be provided as an override.
+Secrets reach the workflow through `secrets: inherit`.
+An App id supplied without `APP_KEY` emits a warning and falls back rather than failing, so a repository that inherits the `APP_ID` variable without the matching secret still releases.
+
+Two limitations apply to the `GITHUB_TOKEN` path only.
+
+- A push made with `GITHUB_TOKEN` triggers no workflow, so the version bump pull request receives no checks. Where the default branch requires status checks, `gh pr merge --auto` then never completes. Configure a GitHub App, or supply a `GH_TOKEN` personal access token.
+- Creating the version bump pull request needs the repository setting "Allow GitHub Actions to create and approve pull requests", under Settings, Actions, General. Without it `gh pr create` fails.
 
 #### Example
 
@@ -204,3 +211,35 @@ The detected formats and engines are written to the job summary by the action it
 [`test-setup-quarto-compute.yml`](.github/workflows/test-setup-quarto-compute.yml) runs the action against the fixtures under [`tests/`](tests), one per install path: `knitr` with a `renv.lock`, `jupyter` with and without a `pyproject.toml`, `julia`, a PDF format, and a Reveal.js deck converted with DeckTape as the release workflow does.
 Each fixture asserts what detection reported, checks that the toolchain it installed is usable, and renders.
 It runs on pull requests touching the action, its fixtures, or the slides script, on dispatch, and monthly.
+
+### [`setup-git-user`](.github/actions/setup-git-user/action.yml)
+
+A composite action that resolves the token the calling job commits, pushes, and calls `gh` with, and configures the matching git identity.
+It is used by `release.yml` and `quarto-extensions-updates.yml`.
+
+A GitHub App is used only when both `gh-app-id` and `app-key` are supplied, since [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token) requires the private key.
+An id supplied without a key emits a warning and falls back, so a repository holding the `APP_ID` variable without the matching secret still runs.
+The action fails when it is given no credentials at all, rather than leaving every later `gh` call to fail on its own.
+
+Because a GitHub App token lasts an hour, a job that pushes long after it started resolves a fresh one first.
+The release workflow does this before updating the template thumbnail, which happens after the runtimes are installed and the project is rendered.
+
+#### Inputs
+
+| Input       | Default | Description                                                            |
+| ----------- | ------- | ------------------------------------------------------------------------ |
+| `gh-app-id` | `""`    | GitHub App client ID. A private key is required alongside it.          |
+| `app-key`   | `""`    | GitHub App private key.                                                |
+| `gh-token`  | `""`    | Token used when no GitHub App is available.                            |
+
+#### Outputs
+
+| Output  | Description                                                              |
+| ------- | -------------------------------------------------------------------------- |
+| `token` | The GitHub App installation token, or `gh-token` when there is no App.   |
+
+#### Tests
+
+[`test-setup-git-user.yml`](.github/workflows/test-setup-git-user.yml) runs the action once per credential path: no App, an App id without a key, a full App when the repository has one configured, and no credentials at all.
+Each asserts the identity written to the git configuration and that a token was resolved, and the last asserts that the action refused to run.
+It runs on pull requests touching the action, on dispatch, and monthly.
