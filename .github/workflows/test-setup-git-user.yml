@@ -12,6 +12,7 @@ on:
     paths:
       - ".github/actions/setup-git-user/**"
       - ".github/workflows/test-setup-git-user.yml"
+      - ".github/workflows/assets/assert-git-identity.sh"
   workflow_dispatch:
   schedule:
     - cron: "30 5 1 * *"
@@ -22,10 +23,6 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  FALLBACK_NAME: github-actions[bot]
-  FALLBACK_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
 
 jobs:
   # A job-level `if` cannot read `secrets`, and a pull request from a fork sees
@@ -84,30 +81,7 @@ jobs:
         env:
           TOKEN: ${{ steps.setup-git-user.outputs.token }}
         shell: bash
-        run: |
-          FAILED=false
-          # An unset key exits non-zero, which would abort the step before it
-          # could report which assertion failed.
-          NAME=$(git config --global user.name || true)
-          EMAIL=$(git config --global user.email || true)
-
-          if [ -z "${TOKEN}" ]; then
-            echo "::error::The action resolved no token."
-            FAILED=true
-          fi
-          if [ "${NAME}" != "${FALLBACK_NAME}" ]; then
-            echo "::error::user.name: expected '${FALLBACK_NAME}', got '${NAME}'"
-            FAILED=true
-          fi
-          if [ "${EMAIL}" != "${FALLBACK_EMAIL}" ]; then
-            echo "::error::user.email: expected '${FALLBACK_EMAIL}', got '${EMAIL}'"
-            FAILED=true
-          fi
-
-          if [ "${FAILED}" = "true" ]; then
-            exit 1
-          fi
-          echo "The fallback identity is ${NAME} <${EMAIL}>."
+        run: .github/workflows/assets/assert-git-identity.sh fallback
 
   app:
     name: App credentials
@@ -132,32 +106,7 @@ jobs:
         env:
           TOKEN: ${{ steps.setup-git-user.outputs.token }}
         shell: bash
-        run: |
-          FAILED=false
-          # An unset key exits non-zero, which would abort the step before it
-          # could report which assertion failed.
-          NAME=$(git config --global user.name || true)
-          EMAIL=$(git config --global user.email || true)
-
-          if [ -z "${TOKEN}" ]; then
-            echo "::error::The action resolved no token."
-            FAILED=true
-          fi
-          # The App slug is whatever App the repository configured, so the shape
-          # of the identity is asserted rather than a particular name.
-          if [ "${NAME}" = "${FALLBACK_NAME}" ] || [ "${NAME}" = "${NAME%\[bot\]}" ]; then
-            echo "::error::user.name: expected an App bot, got '${NAME}'"
-            FAILED=true
-          fi
-          if ! echo "${EMAIL}" | grep -qE '^[0-9]+\+.+\[bot\]@users\.noreply\.github\.com$'; then
-            echo "::error::user.email: expected a numeric App noreply address, got '${EMAIL}'"
-            FAILED=true
-          fi
-
-          if [ "${FAILED}" = "true" ]; then
-            exit 1
-          fi
-          echo "The App identity is ${NAME} <${EMAIL}>."
+        run: .github/workflows/assets/assert-git-identity.sh app
 
   no-credentials:
     name: No credentials at all

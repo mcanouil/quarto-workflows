@@ -36,6 +36,13 @@ permissions:
   id-token: write
   pages: write
 
+# Every job resolves its own token, and each has to be told the same App id, so
+# it is derived once here rather than in each of the four calls. The key and the
+# fallback token stay at the call sites, since a workflow-level `env` cannot
+# read `secrets`.
+env:
+  APP_ID: ${{ inputs.gh-app-id || vars.APP_ID }}
+
 jobs:
   bump-version:
     runs-on: ubuntu-latest
@@ -64,7 +71,7 @@ jobs:
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
-          gh-app-id: ${{ inputs.gh-app-id || vars.APP_ID }}
+          gh-app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -301,7 +308,7 @@ jobs:
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
-          gh-app-id: ${{ inputs.gh-app-id || vars.APP_ID }}
+          gh-app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -627,7 +634,7 @@ jobs:
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         with:
-          gh-app-id: ${{ inputs.gh-app-id || vars.APP_ID }}
+          gh-app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -735,7 +742,7 @@ jobs:
         uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
         id: setup-git-user
         with:
-          gh-app-id: ${{ inputs.gh-app-id || vars.APP_ID }}
+          gh-app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 

@@ -241,5 +241,5 @@ The release workflow does this before updating the template thumbnail, which hap
 #### Tests
 
 [`test-setup-git-user.yml`](.github/workflows/test-setup-git-user.yml) runs the action once per credential path: no App, an App id without a key, a full App when the repository has one configured, and no credentials at all.
-Each asserts the identity written to the git configuration and that a token was resolved, and the last asserts that the action refused to run.
-It runs on pull requests touching the action, on dispatch, and monthly.
+Each asserts the identity written to the git configuration and that a token was resolved, through the shared [`assert-git-identity.sh`](.github/workflows/assets/assert-git-identity.sh), and the last asserts that the action refused to run.
+It runs on pull requests touching the action or that script, on dispatch, and monthly.
