@@ -46,6 +46,9 @@ The workflow resolves one token per job through the [`setup-git-user`](#setup-gi
 Secrets reach the workflow through `secrets: inherit`.
 An App id supplied without `APP_KEY` emits a warning and falls back rather than failing, so a repository that inherits the `APP_ID` variable without the matching secret still releases.
 
+The release job drops the credentials the checkout left in `.git/config` once it has updated the branch, before it restores dependencies and renders, since everything from that point runs code the released project controls.
+A project that resolves a private GitHub dependency from `renv.lock`, `pyproject.toml`, or `Project.toml` therefore has to carry its own credentials for it rather than borrow the release token.
+
 Two limitations apply to the `GITHUB_TOKEN` path only.
 
 - A push made with `GITHUB_TOKEN` triggers no workflow, so the version bump pull request receives no checks. Where the default branch requires status checks, `gh pr merge --auto` then never completes. Configure a GitHub App, or supply a `GH_TOKEN` personal access token.

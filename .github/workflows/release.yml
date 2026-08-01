@@ -323,6 +323,17 @@ jobs:
           git checkout "${GITHUB_REF_NAME}"
           git pull origin "${GITHUB_REF_NAME}"
 
+      # Everything below this point runs code the released project controls:
+      # dependency restores, executed chunks, and pre-render and post-render
+      # scripts. The credentials the checkout left in .git/config are not
+      # needed again until the thumbnail push, which resolves its own, and a
+      # GitHub App installation token reaches every repository the App is
+      # installed on rather than this one alone. So they go now.
+      - name: Drop the git credentials before running project code
+        shell: bash
+        run: |
+          git config --local --unset-all "http.https://github.com/.extraheader" || true
+
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
@@ -648,10 +659,8 @@ jobs:
         shell: bash
         run: |
           if [ -f "${OUTPUT_DIRECTORY}/index.png" ]; then
-            # actions/checkout left the token it was given in an http extraheader,
-            # which wins over anything in the remote URL, so the stale one has to
-            # go before the fresh one can be used.
-            git config --local --unset-all "http.https://github.com/.extraheader" || true
+            # The credentials the checkout left behind were dropped before the
+            # render, so this push carries the refreshed token instead.
             git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
             mv -f "${OUTPUT_DIRECTORY}/index.png" .github/template.png
