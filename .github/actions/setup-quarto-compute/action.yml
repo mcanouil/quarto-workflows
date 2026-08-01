@@ -111,6 +111,16 @@ runs:
         echo "Need R: ${NEED_R}, Python: ${NEED_PYTHON}, Julia: ${NEED_JULIA}"
         echo "Need TinyTeX: ${NEED_TINYTEX}"
 
+        # Reported once here rather than by each caller in its own dialect.
+        {
+          echo "## Quarto detection"
+          echo ""
+          echo "| Field | Value |"
+          echo "|-------|--------|"
+          echo "| Output Formats | \`${FORMATS}\` |"
+          echo "| Engines | \`${ENGINES}\` |"
+        } >> "${GITHUB_STEP_SUMMARY}"
+
         {
           echo "formats=${FORMATS}"
           echo "engines=${ENGINES}"

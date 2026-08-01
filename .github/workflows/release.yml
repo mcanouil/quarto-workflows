@@ -635,19 +635,16 @@ jobs:
             fi
           fi
 
+      # Formats and engines are reported by the compute action itself, in this
+      # job's own summary, so they are not repeated here.
       - name: Add deployment summary
         id: deployment-summary
-        env:
-          FORMATS: ${{ steps.compute.outputs.formats }}
-          ENGINES: ${{ steps.compute.outputs.engines }}
         shell: bash
         run: |
           SUMMARY="## Deployment\n\n"
           SUMMARY+="| Field | Value |\n"
           SUMMARY+="|-------|--------|\n"
           SUMMARY+="| Quarto Version | \`${QUARTOVERSION}\` |\n"
-          SUMMARY+="| Output Formats | \`${FORMATS}\` |\n"
-          SUMMARY+="| Engines | \`${ENGINES}\` |\n"
           if [ "${HAS_DOCS}" = "true" ]; then
             SUMMARY+="| GitHub Pages | Deployed from \`docs/\` by the Pages workflow. |\n"
           else
