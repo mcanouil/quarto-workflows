@@ -43,8 +43,13 @@ permissions:
 # A release bumps a version, pushes a branch, and creates a tag, so two of them
 # at once would race over all three. Queue rather than cancel: a cancelled
 # release leaves the bump branch and its pull request behind.
+#
+# The group is evaluated in the caller's repository, where a workflow named
+# Release picking the obvious `release-<ref>` for itself would deadlock: the
+# calling job would hold the group while waiting for this one to claim it. Hence
+# the prefix.
 concurrency:
-  group: release-${{ github.ref }}
+  group: quarto-workflows-release-${{ github.ref }}
   cancel-in-progress: false
 
 # Every job resolves its own token, and each has to be told the same App id, so
@@ -305,10 +310,9 @@ jobs:
           sleep 5
           # gh prints the pull request URL as the last line of its output.
           PR_URL=$(gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:" | tail -n 1)
-          PR_NUMBER="${PR_URL##*/}"
           echo "Pull request: ${PR_URL}"
           sleep 5
-          gh pr merge "${PR_NUMBER}" --auto --squash --delete-branch
+          gh pr merge "${PR_URL}" --auto --squash --delete-branch
 
           # Every job after this one renders the default branch and tags it, so
           # the bump has to have landed there first. A tag cut while auto-merge
@@ -318,13 +322,14 @@ jobs:
           MERGE_SHA=""
           DEADLINE=$(( SECONDS + MERGE_TIMEOUT ))
           while [ "${SECONDS}" -lt "${DEADLINE}" ]; do
-            STATE=$(gh pr view "${PR_NUMBER}" --json state --jq '.state') || STATE=""
+            # Both fields come from one response: read separately, they answer
+            # about two different instants. The merge commit is not always
+            # attached the moment the state flips, so an empty one polls again
+            # rather than carrying the literal "null" forward.
+            INFO=$(gh pr view "${PR_URL}" --json state,mergeCommit --jq '[.state, (.mergeCommit.oid // "")] | @tsv') || INFO=""
+            IFS=$'\t' read -r STATE MERGE_SHA <<< "${INFO}"
             case "${STATE}" in
               MERGED)
-                # The merge commit is not always attached the instant the state
-                # flips, and `.mergeCommit.oid` on a null one would yield the
-                # literal "null" to check out and tag. Poll again instead.
-                MERGE_SHA=$(gh pr view "${PR_NUMBER}" --json mergeCommit --jq '.mergeCommit.oid // empty') || MERGE_SHA=""
                 if [ -n "${MERGE_SHA}" ]; then
                   echo "Merged as ${MERGE_SHA}."
                   break
@@ -401,9 +406,8 @@ jobs:
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       # The commit the bump merged as, rather than whatever the default branch
-      # points at by now: an unrelated commit landing between the bump and this
-      # checkout would otherwise be rendered and released without ever having
-      # been part of the release.
+      # points at by now: a commit landing in between would otherwise be
+      # rendered and released without ever having been part of the release.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
@@ -665,8 +669,7 @@ jobs:
           tar -czf "${SITE_ARCHIVE}" -C "${OUTPUT_DIRECTORY}" .
 
           # The archive is the one asset every release has, so the list the
-          # upload step reads is built from it outwards rather than enumerated
-          # as a step per combination.
+          # upload step reads is built from it outwards.
           ASSET_PATHS=("${SITE_ARCHIVE}")
 
           # Package _extensions/ if present (named as {extension}-v{version}.tar.gz and .zip)
@@ -685,12 +688,13 @@ jobs:
             ASSET_PATHS+=("$(pwd)/release_assets")
           fi
 
-          ASSET_DELIM="ASSET_PATHS_$(openssl rand -hex 16)"
+          # A fixed delimiter is enough here, unlike the release notes above:
+          # every element is a path this step just built.
           {
             echo "slides_assets_exists=${SLIDES_EXISTS}"
-            echo "asset_paths<<${ASSET_DELIM}"
+            echo "asset_paths<<ASSET_PATHS_DELIM"
             printf '%s\n' "${ASSET_PATHS[@]}"
-            echo "${ASSET_DELIM}"
+            echo "ASSET_PATHS_DELIM"
           } >> "${GITHUB_OUTPUT}"
 
       # Skipped when the repository has a documentation website: the deploy-pages
@@ -759,9 +763,13 @@ jobs:
             if ! git diff --cached --quiet; then
               git commit -m "${COMMIT}"
               git push --force origin "${BRANCH}"
-              gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:"
+              PR_URL=$(gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:" | tail -n 1)
+              echo "Pull request: ${PR_URL}"
               sleep 5
-              gh pr merge --auto --squash --delete-branch
+              # Named rather than inferred from the checked-out branch, as the
+              # bump job does. Nothing waits on this one: the thumbnail is not
+              # part of the release being cut.
+              gh pr merge "${PR_URL}" --auto --squash --delete-branch
               sleep 5
             else
               echo "No changes to commit."
@@ -840,8 +848,8 @@ jobs:
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # The commit the bump merged as, which is also what the tag below points
-      # at, so the release, the render, and the tag all describe one commit.
+      # The same commit the deploy job rendered, and what the tag below points
+      # at, so the render, the tag, and the release all describe one commit.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
@@ -901,9 +909,6 @@ jobs:
             fi
           } > release_notes.md
 
-          # Tagged at the commit the bump merged as rather than at whatever the
-          # default branch points at now, so the tag carries the version the
-          # manifest and CITATION.cff were bumped to.
           gh release create "${VERSION}" \
             --target "${MERGE_SHA}" \
             --title "${RELEASE_TITLE}" \

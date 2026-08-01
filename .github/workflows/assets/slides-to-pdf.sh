@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
 # Quarto post-render script: turns every Reveal.js deck the project rendered into
 # a PDF and a thumbnail, and stages both for release when running in CI.
 
