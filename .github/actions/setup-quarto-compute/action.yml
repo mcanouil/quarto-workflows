@@ -281,7 +281,7 @@ runs:
     - name: Cache TinyTeX
       id: tinytex-cache
       if: ${{ steps.inspect.outputs.need-tinytex == 'true' }}
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.TinyTeX
         key: tinytex-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
