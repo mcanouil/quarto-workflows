@@ -40,24 +40,24 @@ Both repo types record the release version and date in `CITATION.cff`, so the fi
 
 #### Inputs
 
-| Input       | Default     | Description                                                                                         |
-| ----------- | ----------- | --------------------------------------------------------------------------------------------------- |
-| `version`   | `"minor"`   | Version bump type (`patch`/`minor`/`major`). Used for extensions only; ignored for projects.        |
-| `repo-type` | `"auto"`    | Repo type (`auto`/`extension`/`project`). `auto` detects from the repo name and owned manifest.     |
-| `quarto`    | `"release"` | Quarto version to install (`release` or `pre-release`).                                             |
-| `gh-app-id` |             | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable.        |
-| `merge-timeout` | `1800`  | Seconds to wait for the version bump pull request to merge.                                        |
+| Input           | Default     | Description                                                                                     |
+| --------------- | ----------- | ----------------------------------------------------------------------------------------------- |
+| `version`       | `"minor"`   | Version bump type (`patch`/`minor`/`major`). Used for extensions only; ignored for projects.    |
+| `repo-type`     | `"auto"`    | Repo type (`auto`/`extension`/`project`). `auto` detects from the repo name and owned manifest. |
+| `quarto`        | `"release"` | Quarto version to install (`release` or `pre-release`).                                         |
+| `gh-app-id`     |             | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable.    |
+| `merge-timeout` | `1800`      | Seconds to wait for the version bump pull request to merge.                                     |
 
 #### Authentication
 
 A GitHub App is optional.
 The workflow resolves one token per job through the [`setup-git-user`](#setup-git-user) action and uses it for every `gh` call, and for the checkout it pushes from, so the version bump and the thumbnail update are attributed to whichever identity was resolved.
 
-| Configuration                                      | Token                             | Identity                |
-| -------------------------------------------------- | --------------------------------- | ----------------------- |
-| `gh-app-id` (or the `APP_ID` variable) and `APP_KEY` | GitHub App installation token     | `<app-slug>[bot]`       |
-| `GH_TOKEN` secret                                  | The personal access token supplied | `github-actions[bot]`   |
-| Neither                                            | The default `GITHUB_TOKEN`        | `github-actions[bot]`   |
+| Configuration                                        | Token                              | Identity              |
+| ---------------------------------------------------- | ---------------------------------- | --------------------- |
+| `gh-app-id` (or the `APP_ID` variable) and `APP_KEY` | GitHub App installation token      | `<app-slug>[bot]`     |
+| `GH_TOKEN` secret                                    | The personal access token supplied | `github-actions[bot]` |
+| Neither                                              | The default `GITHUB_TOKEN`         | `github-actions[bot]` |
 
 Secrets reach the workflow through `secrets: inherit`.
 An App id supplied without `APP_KEY` emits a warning and falls back rather than failing, so a repository that inherits the `APP_ID` variable without the matching secret still releases.
@@ -133,11 +133,11 @@ Key features include:
 
 #### Inputs
 
-| Input                 | Default     | Description                                                                        |
-| --------------------- | ----------- | ---------------------------------------------------------------------------------- |
-| `ref`                 | `""`        | Commit or ref to build. Defaults to the latest version tag.                        |
-| `use-main-as-release` | `false`     | Render from the triggering ref instead of the latest version tag.                   |
-| `quarto`              | `"release"` | Quarto version to install (`release` or `pre-release`).                            |
+| Input                 | Default     | Description                                                       |
+| --------------------- | ----------- | ----------------------------------------------------------------- |
+| `ref`                 | `""`        | Commit or ref to build. Defaults to the latest version tag.       |
+| `use-main-as-release` | `false`     | Render from the triggering ref instead of the latest version tag. |
+| `quarto`              | `"release"` | Quarto version to install (`release` or `pre-release`).           |
 
 #### Example
 
@@ -191,9 +191,9 @@ The resulting pull request carries the `Type: Dependencies :arrow_up:` label, wh
 
 #### Inputs
 
-| Input              | Default | Description                                                              |
-| ------------------ | ------- | -------------------------------------------------------------------------- |
-| `scan-directories` | `""`    | Newline-separated directories to scan, in addition to the repository root. |
+| Input              | Default | Description                                                                                  |
+| ------------------ | ------- | -------------------------------------------------------------------------------------------- |
+| `scan-directories` | `""`    | Newline-separated directories to scan, in addition to the repository root.                   |
 | `gh-app-id`        |         | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable. |
 
 The token is resolved by [`setup-git-user`](#setup-git-user), on the same terms as the Release workflow.
@@ -248,31 +248,31 @@ The detected formats and engines are written to the job summary by the action it
 
 #### Inputs
 
-| Input      | Default | Description                                                                                                         |
-| ---------- | ------- | -------------------------------------------------------------------------------------------------------------------- |
-| `path`     | `"."`   | Quarto project directory or single document to inspect.                                                             |
-| `chromium` | `"auto"`| Install Chrome libraries: `auto` only when a LaTeX-bound format is detected, `true` always, `false` never.           |
+| Input      | Default  | Description                                                                                                |
+| ---------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `path`     | `"."`    | Quarto project directory or single document to inspect.                                                    |
+| `chromium` | `"auto"` | Install Chrome libraries: `auto` only when a LaTeX-bound format is detected, `true` always, `false` never. |
 
 #### Outputs
 
-| Output         | Description                                                        |
-| -------------- | ------------------------------------------------------------------- |
-| `formats`      | Space-separated output formats detected across the project.        |
-| `engines`      | Space-separated engines detected across the project.               |
-| `need-r`       | Whether the `knitr` engine is used.                                |
-| `need-python`  | Whether the `jupyter` engine is used.                              |
-| `need-julia`   | Whether the `julia` engine is used.                                |
-| `need-tinytex` | Whether a LaTeX-bound format is produced (Typst does not count).   |
+| Output         | Description                                                           |
+| -------------- | --------------------------------------------------------------------- |
+| `formats`      | Space-separated output formats detected across the project.           |
+| `engines`      | Space-separated engines detected across the project.                  |
+| `need-r`       | Whether the `knitr` engine is used.                                   |
+| `need-python`  | Whether the `jupyter` engine is used.                                 |
+| `need-julia`   | Whether the `julia` engine is used.                                   |
+| `need-tinytex` | Whether a LaTeX-bound format is produced (Typst does not count).      |
 | `input-files`  | Newline-separated input files the project renders, as absolute paths. |
 
 #### Installed per detection
 
-| Detected                        | Installed                                                                                  |
-| ------------------------------- | ------------------------------------------------------------------------------------------ |
-| `knitr`                         | R (public RSPM binaries), then `renv` when a `renv.lock` is found, otherwise a cached `knitr` and `rmarkdown`. |
+| Detected                        | Installed                                                                                                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `knitr`                         | R (public RSPM binaries), then `renv` when a `renv.lock` is found, otherwise a cached `knitr` and `rmarkdown`.                                                                    |
 | `jupyter`                       | `uv`, with the interpreter it resolves from `requires-python`, then `uv sync` when a `pyproject.toml` is found, otherwise a bootstrap environment with `jupyter` and `papermill`. |
-| `julia`                         | Julia and a package cache, then `Pkg.instantiate()` and `IJulia`.                          |
-| `pdf`, `beamer`, `latex` format | TinyTeX, cached across runs and put on `PATH`, and the Chrome libraries Quarto needs to turn diagrams into images. |
+| `julia`                         | Julia and a package cache, then `Pkg.instantiate()` and `IJulia`.                                                                                                                 |
+| `pdf`, `beamer`, `latex` format | TinyTeX, cached across runs and put on `PATH`, and the Chrome libraries Quarto needs to turn diagrams into images.                                                                |
 
 #### Tests
 
@@ -294,17 +294,17 @@ The release workflow does this before updating the template thumbnail, which hap
 
 #### Inputs
 
-| Input       | Default | Description                                                            |
-| ----------- | ------- | ------------------------------------------------------------------------ |
-| `gh-app-id` | `""`    | GitHub App client ID. A private key is required alongside it.          |
-| `app-key`   | `""`    | GitHub App private key.                                                |
-| `gh-token`  | `""`    | Token used when no GitHub App is available.                            |
+| Input       | Default | Description                                                   |
+| ----------- | ------- | ------------------------------------------------------------- |
+| `gh-app-id` | `""`    | GitHub App client ID. A private key is required alongside it. |
+| `app-key`   | `""`    | GitHub App private key.                                       |
+| `gh-token`  | `""`    | Token used when no GitHub App is available.                   |
 
 #### Outputs
 
-| Output  | Description                                                              |
-| ------- | -------------------------------------------------------------------------- |
-| `token` | The GitHub App installation token, or `gh-token` when there is no App.   |
+| Output  | Description                                                            |
+| ------- | ---------------------------------------------------------------------- |
+| `token` | The GitHub App installation token, or `gh-token` when there is no App. |
 
 #### Tests
 
