@@ -143,12 +143,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          git tag -a "${VERSION}" -m "${VERSION}"
+          # Lightweight, deliberately, and not to be turned back into annotated
+          # tags. `release.yml` calls the Pages workflow through a relative
+          # reference, and GitHub does not peel an annotated tag to its commit
+          # when it resolves one: a caller pinning an annotated tag fails the
+          # whole run before a single job starts, with no error beyond "this run
+          # likely failed because of a workflow file issue". Branches, commit
+          # SHAs, and lightweight tags all resolve. `tag.gpgSign` is spelled out
+          # because it would otherwise turn these into annotated tags wherever it
+          # is configured.
+          git -c tag.gpgSign=false tag "${VERSION}"
 
           # The rolling tags are what callers actually pin, so they are moved on
           # to this commit. Only the exact version is immutable.
-          git tag -f -a "${MINOR}" -m "${VERSION}"
-          git tag -f -a "${MAJOR}" -m "${VERSION}"
+          git -c tag.gpgSign=false tag -f "${MINOR}"
+          git -c tag.gpgSign=false tag -f "${MAJOR}"
 
           git push origin "${VERSION}"
           git push --force origin "${MINOR}" "${MAJOR}"
