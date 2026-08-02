@@ -115,12 +115,25 @@ jobs:
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
-      # This clears the workspace, and with it the checkout above. Nothing after
-      # this point in the job reads the workflow source, so it is not restored.
+      # This clears the workspace, and with it the checkout above.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           token: ${{ steps.setup-git-user.outputs.token }}
+
+      # The runner resolves an action's post step from disk when the job ends,
+      # so the source the checkout above cleared has to be back by then or the
+      # job fails after all its work is done. Restoring it here rather than at
+      # the end keeps it present for whatever the job does in between.
+      - name: Restore the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Detect project type
         id: detect-project
@@ -929,7 +942,8 @@ jobs:
       - deploy
 
     steps:
-      # As in bump-version, and cleared in the same way by the checkout below.
+      # As in bump-version, cleared in the same way by the checkout below, and
+      # restored after it for the same reason.
       - name: Checkout the workflow source
         uses: actions/checkout@v7
         with:
@@ -955,6 +969,16 @@ jobs:
         with:
           token: ${{ steps.setup-git-user.outputs.token }}
           ref: ${{ needs.bump-version.outputs.merge_sha }}
+
+      - name: Restore the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Download release assets
         id: download-release-assets-artifact
