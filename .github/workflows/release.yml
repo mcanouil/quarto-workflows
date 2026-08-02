@@ -88,23 +88,52 @@ jobs:
       has_docs: ${{ steps.detect-project.outputs.has_docs }}
 
     steps:
+      # The actions this workflow uses live beside it, so they are read from the
+      # commit the caller pinned rather than from a branch that moves under it.
+      # A local `uses: ./` is resolved against the workspace, which is why they
+      # are checked out into it rather than referenced across repositories.
+      - name: Checkout the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       # Before the checkout, so the branch this job pushes carries the resolved
       # identity. The action needs no working tree of its own. A push made with
       # the default GITHUB_TOKEN triggers no workflow, which leaves the version
       # bump pull request without the checks its auto-merge waits for, so a
       # repository with a GitHub App pushes as the App instead.
       - name: Setup Git User
-        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
+        uses: ./.quarto-workflows/.github/actions/setup-git-user
         id: setup-git-user
         with:
           gh-app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
           gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
+      # This clears the workspace, and with it the checkout above.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           token: ${{ steps.setup-git-user.outputs.token }}
+
+      # The runner resolves an action's post step from disk when the job ends,
+      # so the source the checkout above cleared has to be back by then or the
+      # job fails after all its work is done. Restoring it here rather than at
+      # the end keeps it present for whatever the job does in between.
+      - name: Restore the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Detect project type
         id: detect-project
@@ -427,8 +456,21 @@ jobs:
       summary: ${{ steps.deployment-summary.outputs.summary }}
 
     steps:
+      # As in bump-version: the workflow's own actions, read from the commit the
+      # caller pinned. The repository checkout below clears this one, so it is
+      # taken again once that has happened.
+      - name: Checkout the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Setup Git User
-        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
+        uses: ./.quarto-workflows/.github/actions/setup-git-user
         id: setup-git-user
         with:
           gh-app-id: ${{ env.APP_ID }}
@@ -463,6 +505,21 @@ jobs:
             exit 1
           fi
           echo "No credentials remain in .git/config."
+
+      # Restored after the repository checkout cleared it, and widened to the
+      # assets, since the slide conversion below reads a script from them. The
+      # name is dot-prefixed so that Quarto leaves it out of the render.
+      - name: Checkout the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: |
+            .github/actions
+            .github/workflows/assets
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
@@ -527,7 +584,7 @@ jobs:
       # turn slides into PDF whatever the engines and formats turn out to be.
       - name: Set up compute environment
         id: compute
-        uses: mcanouil/quarto-workflows/.github/actions/setup-quarto-compute@main
+        uses: ./.quarto-workflows/.github/actions/setup-quarto-compute
         with:
           path: ${{ steps.detect-project-dir.outputs.project_dir }}
           chromium: "true"
@@ -561,19 +618,6 @@ jobs:
       - name: Set up Node.js
         if: ${{ steps.check-decktape.outputs.need_decktape == 'true' }}
         uses: actions/setup-node@v7
-
-      - name: Checkout slides-to-pdf script
-        if: ${{ steps.check-decktape.outputs.need_decktape == 'true' }}
-        uses: actions/checkout@v7
-        with:
-          repository: mcanouil/quarto-workflows
-          sparse-checkout: .github/workflows/assets/slides-to-pdf.sh
-          sparse-checkout-cone-mode: false
-          path: workflows
-          # Only the script is wanted, and it is read as a plain file rather
-          # than through git, so this checkout does not undo the credential
-          # drop above by persisting a token of its own beside the render.
-          persist-credentials: false
 
       - name: Exclude CHANGELOG.md from render
         env:
@@ -650,7 +694,7 @@ jobs:
 
             # Add post-render script to _quarto.yml if not using docs/
             if [ "${PROJECT_DIR}" = "." ]; then
-              SLIDES_SCRIPT="workflows/.github/workflows/assets/slides-to-pdf.sh"
+              SLIDES_SCRIPT=".quarto-workflows/.github/workflows/assets/slides-to-pdf.sh"
               if yq eval '.project.post-render' _quarto.yml | grep -q "null"; then
                 yq eval ".project.post-render = [\"${SLIDES_SCRIPT}\"]" -i _quarto.yml
               else
@@ -749,13 +793,29 @@ jobs:
           path: |
             ${{ steps.render-quarto.outputs.asset_paths }}
 
+      # The render between here and the earlier checkout ran project code, which
+      # is free to write anywhere in the workspace. The action that is about to
+      # be handed APP_KEY is therefore taken from the pinned commit again rather
+      # than read off disk. A runner enforces no boundary here either way, so
+      # this is hygiene rather than containment.
+      - name: Restore the workflow source
+        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       # A GitHub App token lasts an hour, and this job spends that hour
       # installing runtimes and rendering before it pushes anything, so the one
       # the checkout is holding may well have expired by now.
       - name: Refresh the token before pushing
         id: refresh-git-user
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
-        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
+        uses: ./.quarto-workflows/.github/actions/setup-git-user
         with:
           gh-app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
@@ -882,8 +942,20 @@ jobs:
       - deploy
 
     steps:
+      # As in bump-version, cleared in the same way by the checkout below, and
+      # restored after it for the same reason.
+      - name: Checkout the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Setup Git User
-        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
+        uses: ./.quarto-workflows/.github/actions/setup-git-user
         id: setup-git-user
         with:
           gh-app-id: ${{ env.APP_ID }}
@@ -897,6 +969,16 @@ jobs:
         with:
           token: ${{ steps.setup-git-user.outputs.token }}
           ref: ${{ needs.bump-version.outputs.merge_sha }}
+
+      - name: Restore the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Download release assets
         id: download-release-assets-artifact
@@ -1005,7 +1087,10 @@ jobs:
       contents: read
       pages: write
       id-token: write
-    uses: mcanouil/quarto-workflows/.github/workflows/pages.yml@main
+    # Relative, so the Pages workflow comes from the same commit as this file
+    # rather than from a branch. `uses` accepts no expressions, so this is the
+    # only form that follows whatever ref the caller pinned.
+    uses: ./.github/workflows/pages.yml
     with:
       ref: ${{ needs.bump-version.outputs.version }}
       quarto: ${{ inputs.quarto }}
