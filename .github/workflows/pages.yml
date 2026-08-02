@@ -86,7 +86,8 @@ jobs:
       # commit the caller pinned rather than from a branch that moves under it.
       # A local `uses: ./` is resolved against the workspace, which is why it is
       # checked out into one, under a name Quarto leaves out of the render. It
-      # comes after the checkouts above, which would otherwise clear it.
+      # comes after the repository checkout above, which would otherwise clear
+      # it.
       - name: Checkout the workflow source
         uses: actions/checkout@v7
         with:
