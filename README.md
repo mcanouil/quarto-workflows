@@ -2,6 +2,18 @@
 
 GitHub Actions workflows for Quarto projects.
 
+## Versioning
+
+Callers pin a tag rather than a branch.
+Three tags are published for every release: `vX.Y.Z`, which never moves, and `vX.Y` and `vX`, which roll forward on to each new release they cover.
+The examples below pin `vX`, which is the usual choice, since Dependabot's `github-actions` ecosystem updates a `uses:` reference to the next major on its own.
+
+A change to a workflow input, or to what a workflow does to the repository calling it, bumps the major.
+Everything else is a minor or a patch.
+
+Within a release, the workflows are self-consistent: each one resolves the actions it uses, and the workflows it calls, from the same commit the caller pinned.
+That does not extend to the actions maintained elsewhere that these workflows call, `mcanouil/quarto-extensions-updater` and the `actions/*` family among them, which are themselves pinned to a major and so still move.
+
 ## Usage
 
 > [!NOTE]
@@ -90,7 +102,7 @@ permissions:
 
 jobs:
   release:
-    uses: mcanouil/quarto-workflows/.github/workflows/release.yml@main
+    uses: mcanouil/quarto-workflows/.github/workflows/release.yml@v1
     permissions:
       contents: write
       pull-requests: write
@@ -158,7 +170,7 @@ permissions:
 
 jobs:
   pages:
-    uses: mcanouil/quarto-workflows/.github/workflows/pages.yml@main
+    uses: mcanouil/quarto-workflows/.github/workflows/pages.yml@v1
     permissions:
       contents: read
       pages: write
@@ -201,7 +213,7 @@ permissions:
 
 jobs:
   update:
-    uses: mcanouil/quarto-workflows/.github/workflows/quarto-extensions-updates.yml@main
+    uses: mcanouil/quarto-workflows/.github/workflows/quarto-extensions-updates.yml@v1
     permissions:
       contents: write
       pull-requests: write
@@ -213,8 +225,8 @@ jobs:
 
 ## Actions
 
-The workflows above reference these actions at `@main` rather than at a tag, so a caller pinning a workflow to a release still gets the current action.
-There is one moving surface, not three.
+The workflows above check these actions out from their own commit and run them from the workspace, so a caller that pinned a workflow to a release gets the actions that shipped with it.
+Neither action is meant to be called directly.
 
 ### [`setup-quarto-compute`](.github/actions/setup-quarto-compute/action.yml)
 
