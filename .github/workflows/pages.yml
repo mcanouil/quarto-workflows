@@ -82,6 +82,21 @@ jobs:
           echo "Latest tag: ${LATEST_TAG}"
           git checkout "${LATEST_TAG}"
 
+      # The compute action lives beside this workflow, so it is read from the
+      # commit the caller pinned rather than from a branch that moves under it.
+      # A local `uses: ./` is resolved against the workspace, which is why it is
+      # checked out into one, under a name Quarto leaves out of the render. It
+      # comes after the checkouts above, which would otherwise clear it.
+      - name: Checkout the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Set up Quarto CLI
         uses: quarto-dev/quarto-actions/setup@v2
         with:
@@ -109,7 +124,7 @@ jobs:
       # the extensions it declares.
       - name: Set up compute environment
         id: compute
-        uses: mcanouil/quarto-workflows/.github/actions/setup-quarto-compute@main
+        uses: ./.quarto-workflows/.github/actions/setup-quarto-compute
         with:
           path: docs
 

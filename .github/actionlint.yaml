@@ -1,0 +1,14 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
+paths:
+  .github/workflows/**:
+    ignore:
+      # The workflows resolve their own source through job.workflow_repository
+      # and job.workflow_sha, which actionlint's model of the job context does
+      # not carry yet: it stops at check_run_id, container, services, and
+      # status. Both are documented, and unavailable on GitHub Enterprise
+      # Server, which these workflows do not target.
+      # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#job-context
+      - 'property "workflow_(repository|sha)" is not defined in object type'

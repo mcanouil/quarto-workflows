@@ -46,8 +46,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The action lives beside this workflow, so it is read from the commit the
+      # caller pinned rather than from a branch that moves under it. A local
+      # `uses: ./` is resolved against the workspace, which is why it is checked
+      # out into one, after the checkout above that would clear it.
+      - name: Checkout the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Setup Git User
-        uses: mcanouil/quarto-workflows/.github/actions/setup-git-user@main
+        uses: ./.quarto-workflows/.github/actions/setup-git-user
         id: setup-git-user
         with:
           gh-app-id: ${{ inputs.gh-app-id || vars.APP_ID }}
