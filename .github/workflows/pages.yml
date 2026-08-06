@@ -8,7 +8,8 @@ name: Pages
 # serves from GitHub Pages once it has one: it takes the slot the rendered
 # example.qmd or template.qmd used to fill. The Release workflow calls this
 # after tagging, and it is dispatchable on its own. Pull requests render the
-# site as a check, from their own head, but never deploy.
+# site as a check, from their own head, but never deploy, and a draft renders
+# nothing at all.
 on:
   workflow_call:
     inputs:
@@ -55,6 +56,15 @@ jobs:
   build:
     name: Render site
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    # A draft pull request is not asking for a check yet, and this render
+    # installs whichever runtimes the site executes with. `github.event` is the
+    # caller's event, so a dispatch or a release call leaves `pull_request`
+    # null and the job runs. A caller triggered by `pull_request` has to list
+    # `ready_for_review` among its `types`, since the default set fires nothing
+    # when a pull request leaves draft.
+    if: ${{ github.event.pull_request.draft != true }}
 
     steps:
       - name: Checkout repository
@@ -144,6 +154,7 @@ jobs:
     name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: ${{ github.event_name != 'pull_request' }}
 
     permissions:

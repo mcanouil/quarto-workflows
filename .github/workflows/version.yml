@@ -29,6 +29,7 @@ concurrency:
 jobs:
   version:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Refuse to tag anything but the default branch

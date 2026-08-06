@@ -9,6 +9,10 @@ name: Test Setup Quarto Compute
 # fixture under tests/ exercises one of those paths here instead.
 on:
   pull_request:
+    # A draft pull request skips every job below, and the default activity types
+    # fire nothing when one leaves draft, so the render would then wait for a
+    # further push.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".github/actions/setup-quarto-compute/**"
       - ".github/workflows/test-setup-quarto-compute.yml"
@@ -29,6 +33,11 @@ jobs:
   detect:
     name: ${{ matrix.label || matrix.fixture }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    # Each fixture installs a language runtime and renders, which a draft pull
+    # request is not asking for yet.
+    if: ${{ github.event.pull_request.draft != true }}
 
     # Set for the job rather than for the compute step, so it reaches the steps
     # the composite action runs. Every fixture but one leaves it empty, and
@@ -205,6 +214,9 @@ jobs:
   slides:
     name: decktape
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    if: ${{ github.event.pull_request.draft != true }}
 
     # Mirrors what the release workflow does with a deck, so the browser
     # decktape drives is exercised here rather than during a release.

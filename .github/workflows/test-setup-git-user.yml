@@ -9,6 +9,9 @@ name: Test Setup Git User
 # of a GitHub App is available. Each of those paths is exercised here.
 on:
   pull_request:
+    # As in the compute test: a draft skips every job below, and the default
+    # activity types fire nothing when a pull request leaves draft.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".github/actions/setup-git-user/**"
       - ".github/workflows/test-setup-git-user.yml"
@@ -30,6 +33,9 @@ jobs:
   check-app:
     name: Check for App credentials
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    if: ${{ github.event.pull_request.draft != true }}
 
     outputs:
       has-app: ${{ steps.check.outputs.has-app }}
@@ -53,6 +59,9 @@ jobs:
   fallback:
     name: ${{ matrix.label }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    if: ${{ github.event.pull_request.draft != true }}
 
     strategy:
       fail-fast: false
@@ -86,9 +95,10 @@ jobs:
   app:
     name: App credentials
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     needs: check-app
-    if: ${{ needs.check-app.outputs.has-app == 'true' }}
+    if: ${{ github.event.pull_request.draft != true && needs.check-app.outputs.has-app == 'true' }}
 
     steps:
       - name: Checkout repository
@@ -111,6 +121,9 @@ jobs:
   no-credentials:
     name: No credentials at all
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    if: ${{ github.event.pull_request.draft != true }}
 
     steps:
       - name: Checkout repository
