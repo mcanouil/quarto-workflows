@@ -39,11 +39,11 @@ on:
         default: 1800
         type: number
 
-permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
-  pages: write
+# Declared per job rather than once here, so the job that renders the released
+# project, which runs executed chunks and pre-render and post-render scripts the
+# project controls, holds a read-only token. Only bump-version, thumbnail, and
+# release write. A called workflow cannot exceed what the calling job granted,
+# so these narrow the caller's block rather than widen it.
 
 # A release bumps a version, pushes a branch, and creates a tag, so two of them
 # at once would race over all three. Queue rather than cancel: a cancelled
@@ -57,16 +57,23 @@ concurrency:
   group: quarto-workflows-release-${{ github.ref }}
   cancel-in-progress: false
 
-# Every job resolves its own token, and each has to be told the same App id, so
-# it is derived once here rather than in each of the four calls. The key and the
-# fallback token stay at the call sites, since a workflow-level `env` cannot
-# read `secrets`.
+# Every job that writes resolves its own token, and each has to be told the same
+# App id, so it is derived once here rather than in each of the three calls. The
+# key and the fallback token stay at the call sites, since a workflow-level `env`
+# cannot read `secrets`.
 env:
   APP_ID: ${{ inputs.gh-app-id || vars.APP_ID }}
 
 jobs:
   bump-version:
     runs-on: ubuntu-latest
+    # Above merge-timeout, which this job spends polling: raising one raises
+    # this.
+    timeout-minutes: 45
+
+    permissions:
+      contents: write
+      pull-requests: write
 
     env:
       BRANCH: ci/bump-version
@@ -440,6 +447,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     needs: bump-version
 
@@ -447,6 +455,15 @@ jobs:
     # `environment` conditionally, and claiming `github-pages` while deploying
     # nothing would record a deployment that never happened, so the deployment
     # itself lives in publish-pages (no docs/) or deploy-pages (docs/) below.
+    #
+    # Read-only on contents, since everything past the checkout runs code the
+    # released project controls. `pages: write` is what configure-pages needs to
+    # stage the site for publish-pages. The one write this job used to make, the
+    # template thumbnail, is now the thumbnail job below.
+    permissions:
+      contents: read
+      pages: write
+
     env:
       QUARTOVERSION: ${{ inputs.quarto }}
       REPO_TYPE: ${{ needs.bump-version.outputs.repo_type }}
@@ -454,44 +471,23 @@ jobs:
 
     outputs:
       summary: ${{ steps.deployment-summary.outputs.summary }}
+      has_thumbnail: ${{ steps.stage-thumbnail.outputs.has_thumbnail }}
 
     steps:
-      # As in bump-version: the workflow's own actions, read from the commit the
-      # caller pinned. The repository checkout below clears this one, so it is
-      # taken again once that has happened.
-      - name: Checkout the workflow source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .quarto-workflows
-          sparse-checkout: .github/actions
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
-      - name: Setup Git User
-        uses: ./.quarto-workflows/.github/actions/setup-git-user
-        id: setup-git-user
-        with:
-          gh-app-id: ${{ env.APP_ID }}
-          app-key: ${{ secrets.APP_KEY }}
-          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-
       # The commit the bump merged as, rather than whatever the default branch
       # points at by now: a commit landing in between would otherwise be
       # rendered and released without ever having been part of the release.
+      # The default token is enough to read the repository, and this job never
+      # writes, so no App token is resolved here at all.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          token: ${{ steps.setup-git-user.outputs.token }}
           ref: ${{ needs.bump-version.outputs.merge_sha }}
 
       # Everything below this point runs code the released project controls:
       # dependency restores, executed chunks, and pre-render and post-render
       # scripts. The credentials the checkout left in .git/config are not
-      # needed again until the thumbnail push, which resolves its own, and a
-      # GitHub App installation token reaches every repository the App is
-      # installed on rather than this one alone. So they go now.
+      # needed again by this job at all, so they go now.
       - name: Drop the git credentials before running project code
         shell: bash
         run: |
@@ -506,9 +502,13 @@ jobs:
           fi
           echo "No credentials remain in .git/config."
 
-      # Restored after the repository checkout cleared it, and widened to the
-      # assets, since the slide conversion below reads a script from them. The
-      # name is dot-prefixed so that Quarto leaves it out of the render.
+      # The workflow's own actions and assets, read from the commit the caller
+      # pinned rather than from a branch that moves under it. A local `uses: ./`
+      # is resolved against the workspace, which is why they are checked out
+      # into it, after the repository checkout that would otherwise clear them.
+      # The assets are included because the slide conversion below reads a
+      # script from them. The name is dot-prefixed so that Quarto leaves it out
+      # of the render.
       - name: Checkout the workflow source
         uses: actions/checkout@v7
         with:
@@ -793,90 +793,34 @@ jobs:
           path: |
             ${{ steps.render-quarto.outputs.asset_paths }}
 
-      # The render between here and the earlier checkout ran project code, which
-      # is free to write anywhere in the workspace. The action that is about to
-      # be handed APP_KEY is therefore taken from the pinned commit again rather
-      # than read off disk. A runner enforces no boundary here either way, so
-      # this is hygiene rather than containment.
-      - name: Restore the workflow source
+      # The rendered thumbnail is handed to the thumbnail job rather than pushed
+      # from here, so that this job, which has just run the released project's
+      # own code, needs no write of any kind. Staged under a directory of its
+      # own, since the artifact is downloaded straight over .github/ there.
+      - name: Stage the template thumbnail
+        id: stage-thumbnail
         if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .quarto-workflows
-          sparse-checkout: .github/actions
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
-      # A GitHub App token lasts an hour, and this job spends that hour
-      # installing runtimes and rendering before it pushes anything, so the one
-      # the checkout is holding may well have expired by now.
-      - name: Refresh the token before pushing
-        id: refresh-git-user
-        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
-        uses: ./.quarto-workflows/.github/actions/setup-git-user
-        with:
-          gh-app-id: ${{ env.APP_ID }}
-          app-key: ${{ secrets.APP_KEY }}
-          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-
-      # The thumbnail is not part of the release being cut, so a failure here
-      # reports itself and lets the tag, the release, and the deployment go out.
-      - name: Update template thumbnail
-        if: ${{ steps.render-quarto.outputs.slides_assets_exists == 'true' }}
-        continue-on-error: true
         env:
-          GH_TOKEN: ${{ steps.refresh-git-user.outputs.token }}
           OUTPUT_DIRECTORY: ${{ steps.detect-project-dir.outputs.output_directory }}
-          BRANCH: ci/update-thumbs
-          COMMIT: "ci: update thumbs :art:"
         shell: bash
         run: |
           if [ -f "${OUTPUT_DIRECTORY}/index.png" ]; then
-            # The credentials the checkout left behind were dropped before the
-            # render, so this push carries the refreshed token instead. The host
-            # is derived rather than spelled out, as it is for the key above.
-            git remote set-url origin "https://x-access-token:${GH_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
-
-            mv -f "${OUTPUT_DIRECTORY}/index.png" .github/template.png
-            # As for the bump branch: the branch only ever exists on the remote,
-            # and a pull request left open by an earlier run would make
-            # `gh pr create` below fail.
-            if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
-              echo "Remote branch ${BRANCH} already exists; it will be force-pushed."
-              STALE_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
-              if [ -n "${STALE_PR}" ]; then
-                echo "Closing the stale pull request #${STALE_PR}."
-                gh pr close "${STALE_PR}"
-              fi
-            fi
-            git checkout -B "${BRANCH}"
-            git add .github/template.png || echo "No changes to add"
-            if ! git diff --cached --quiet; then
-              git commit -m "${COMMIT}"
-              git push --force origin "${BRANCH}"
-              # Spelled out rather than filled from the branch's first commit:
-              # `--fill-first` reads `origin/<base>...<head>`, and this job
-              # checks out the merge commit by SHA, which leaves no
-              # remote-tracking ref for the base to resolve against. The title
-              # is the commit message either way.
-              PR_URL=$(gh pr create \
-                --title "${COMMIT}" \
-                --body "Regenerated \`.github/template.png\` from the rendered slides." \
-                --base "${GITHUB_REF_NAME}" \
-                --head "${BRANCH}" \
-                --label "Type: CI/CD :robot:" | tail -n 1)
-              echo "Pull request: ${PR_URL}"
-              sleep 5
-              # Named rather than inferred from the checked-out branch, as the
-              # bump job does.
-              gh pr merge "${PR_URL}" --auto --squash --delete-branch
-              sleep 5
-            else
-              echo "No changes to commit."
-            fi
+            mkdir -p .template-thumbnail
+            mv -f "${OUTPUT_DIRECTORY}/index.png" .template-thumbnail/template.png
+            HAS_THUMBNAIL=true
+          else
+            HAS_THUMBNAIL=false
+            echo "No ${OUTPUT_DIRECTORY}/index.png; nothing to stage."
           fi
+          echo "has_thumbnail=${HAS_THUMBNAIL}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload the template thumbnail
+        if: ${{ steps.stage-thumbnail.outputs.has_thumbnail == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: template-thumbnail
+          path: .template-thumbnail/template.png
+          retention-days: 1
 
       # Formats and engines are reported by the compute action itself, in this
       # job's own summary, so they are not repeated here.
@@ -895,11 +839,132 @@ jobs:
           fi
           echo "summary=${SUMMARY}" >> "${GITHUB_OUTPUT}"
 
+  # The thumbnail a deck renders is committed back, which is the one write the
+  # render used to make while holding the released project's code. It sits in a
+  # job of its own so that render stays read-only, and so the token it pushes
+  # with is resolved here, minutes rather than an hour after the release
+  # started: a GitHub App installation token lasts an hour, and installing
+  # runtimes and rendering can spend most of one.
+  #
+  # The thumbnail is not part of the release being cut, so a failure here
+  # reports itself and lets the tag, the release, and the deployment go out.
+  # Nothing depends on this job for the same reason.
+  thumbnail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+
+    needs:
+      - bump-version
+      - deploy
+
+    if: ${{ needs.deploy.outputs.has_thumbnail == 'true' }}
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    env:
+      BRANCH: ci/update-thumbs
+      COMMIT: "ci: update thumbs :art:"
+
+    steps:
+      # As in bump-version: the workflow's own actions, read from the commit the
+      # caller pinned, and cleared by the repository checkout below.
+      - name: Checkout the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Setup Git User
+        uses: ./.quarto-workflows/.github/actions/setup-git-user
+        id: setup-git-user
+        with:
+          gh-app-id: ${{ env.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # The commit the release was cut from, as in the deploy and release jobs,
+      # so the thumbnail branch forks from the released tree rather than from
+      # whatever the default branch points at by now.
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.setup-git-user.outputs.token }}
+          ref: ${{ needs.bump-version.outputs.merge_sha }}
+
+      # As in bump-version: the runner resolves an action's post step from disk
+      # when the job ends, so the source the checkout above cleared has to be
+      # back by then or the job fails after all its work is done.
+      - name: Restore the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Download the template thumbnail
+        uses: actions/download-artifact@v8
+        with:
+          name: template-thumbnail
+          path: .github
+
+      - name: Open the thumbnail pull request
+        env:
+          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
+        shell: bash
+        run: |
+          # As for the bump branch: the branch only ever exists on the remote,
+          # and a pull request left open by an earlier run would make
+          # `gh pr create` below fail.
+          if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
+            echo "Remote branch ${BRANCH} already exists; it will be force-pushed."
+            STALE_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
+            if [ -n "${STALE_PR}" ]; then
+              echo "Closing the stale pull request #${STALE_PR}."
+              gh pr close "${STALE_PR}"
+            fi
+          fi
+          git checkout -B "${BRANCH}"
+          git add .github/template.png || echo "No changes to add"
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "${COMMIT}"
+          git push --force origin "${BRANCH}"
+          # Spelled out rather than filled from the branch's first commit:
+          # `--fill-first` reads `origin/<base>...<head>`, and this job checks
+          # out the merge commit by SHA, which leaves no remote-tracking ref for
+          # the base to resolve against. The title is the commit message either
+          # way.
+          PR_URL=$(gh pr create \
+            --title "${COMMIT}" \
+            --body "Regenerated \`.github/template.png\` from the rendered slides." \
+            --base "${GITHUB_REF_NAME}" \
+            --head "${BRANCH}" \
+            --label "Type: CI/CD :robot:" | tail -n 1)
+          echo "Pull request: ${PR_URL}"
+          sleep 5
+          # Named rather than inferred from the checked-out branch, as the bump
+          # job does.
+          gh pr merge "${PR_URL}" --auto --squash --delete-branch
+
   # A repository without docs/ publishes its rendered example or template to
   # Pages, as it always has. The deployment sits in its own job so the
   # github-pages environment is claimed only when something is deployed.
   publish-pages:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     needs:
       - bump-version
@@ -936,10 +1001,15 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     needs:
       - bump-version
       - deploy
+
+    # The tag and the release itself.
+    permissions:
+      contents: write
 
     steps:
       # As in bump-version, cleared in the same way by the checkout below, and

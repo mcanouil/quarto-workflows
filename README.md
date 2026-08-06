@@ -7,6 +7,7 @@ GitHub Actions workflows for Quarto projects.
 Callers pin a tag rather than a branch.
 Three tags are published for every release: `vX.Y.Z`, which never moves, and `vX.Y` and `vX`, which roll forward on to each new release they cover.
 The examples below pin `vX`, which is the usual choice, since Dependabot's `github-actions` ecosystem updates a `uses:` reference to the next major on its own.
+The current major is `v2`.
 
 A change to a workflow input, or to what a workflow does to the repository calling it, bumps the major.
 Everything else is a minor or a patch.
@@ -35,6 +36,7 @@ Key features include:
 - **Slide-to-PDF conversion**: Automatic PDF generation using DeckTape for custom Reveal.js format extensions and presentations.
 - **GitHub integration**: Creates PRs for version bumps, deploys to GitHub Pages, and publishes releases with assets and install instructions.
 - **Bump before render**: The workflow waits for the version bump pull request to merge, then renders and tags the exact commit it merged as, so the tag always carries the bumped manifest.
+- **Read-only render**: The job that renders the released project holds no write scope, and the template thumbnail it produces is committed back by a separate job.
 
 Both repo types record the release version and date in `CITATION.cff`, so the file is required.
 
@@ -51,7 +53,7 @@ Both repo types record the release version and date in `CITATION.cff`, so the fi
 #### Authentication
 
 A GitHub App is optional.
-The workflow resolves one token per job through the [`setup-git-user`](#setup-git-user) action and uses it for every `gh` call, and for the checkout it pushes from, so the version bump and the thumbnail update are attributed to whichever identity was resolved.
+Each job that writes resolves its own token through the [`setup-git-user`](#setup-git-user) action and uses it for every `gh` call, and for the checkout it pushes from, so the version bump, the thumbnail update, and the release are attributed to whichever identity was resolved.
 
 | Configuration                                        | Token                              | Identity              |
 | ---------------------------------------------------- | ---------------------------------- | --------------------- |
@@ -62,8 +64,23 @@ The workflow resolves one token per job through the [`setup-git-user`](#setup-gi
 Secrets reach the workflow through `secrets: inherit`.
 An App id supplied without `APP_KEY` emits a warning and falls back rather than failing, so a repository that inherits the `APP_ID` variable without the matching secret still releases.
 
-The release job drops the credentials the checkout left in `.git/config` once it has updated the branch, before it restores dependencies and renders, since everything from that point runs code the released project controls.
+Scopes are declared per job rather than once for the workflow, so only the three jobs that write hold a token that can.
+
+| Job             | Permissions                                         | What it writes                                   |
+| --------------- | --------------------------------------------------- | ------------------------------------------------ |
+| `bump-version`  | `contents: write`, `pull-requests: write`           | The version bump branch and its pull request.    |
+| `deploy`        | `contents: read`, `pages: write`                    | Nothing; it renders, packages, and stages Pages. |
+| `thumbnail`     | `contents: write`, `pull-requests: write`           | `.github/template.png`, through a pull request.  |
+| `publish-pages` | `contents: read`, `pages: write`, `id-token: write` | The Pages deployment, where there is no `docs/`. |
+| `release`       | `contents: write`                                   | The tag and the GitHub release.                  |
+| `deploy-pages`  | `contents: read`, `pages: write`, `id-token: write` | The Pages deployment, where there is a `docs/`.  |
+
+The calling job still grants the union of these, since a called workflow can only narrow what it was given.
+
+The render job takes no App token at all, and drops the credentials the checkout left in `.git/config` before it restores dependencies and renders, since everything from that point runs code the released project controls.
 A project that resolves a private GitHub dependency from `renv.lock`, `pyproject.toml`, or `Project.toml` therefore has to carry its own credentials for it rather than borrow the release token.
+The template thumbnail a deck renders is handed to the `thumbnail` job as an artifact, which resolves its own token and opens the pull request.
+That job is allowed to fail: the tag, the release, and the deployment do not wait on it.
 
 Two limitations apply to the `GITHUB_TOKEN` path only.
 
@@ -102,7 +119,7 @@ permissions:
 
 jobs:
   release:
-    uses: mcanouil/quarto-workflows/.github/workflows/release.yml@v1
+    uses: mcanouil/quarto-workflows/.github/workflows/release.yml@v2
     permissions:
       contents: write
       pull-requests: write
@@ -124,9 +141,14 @@ A reusable workflow that renders the documentation website under `docs/` and dep
 The Release workflow calls it after tagging, so the published site describes the version users can install.
 It is also dispatchable on its own, and a pull request that calls it renders the site as a check without deploying.
 
+A draft pull request renders nothing.
+The render is what installs R, Python, Julia, TinyTeX, and the Chrome libraries the site needs, and a draft is not asking for that yet.
+A caller triggered by `pull_request` therefore has to list `ready_for_review` among its `types`, since the default set of `opened`, `synchronize`, and `reopened` fires nothing when a pull request leaves draft, and the render would otherwise wait for a further push.
+
 Key features include:
 
 - **Released source by default**: The latest version tag is resolved and rendered, unless `ref` or `use-main-as-release` says otherwise. Pull requests always render their own head.
+- **Drafts skipped**: A draft pull request skips the render, and marking it ready for review runs it.
 - **Extension mirror**: `docs/_scripts/sync-extension.sh` is run when present, so a shortcode contributed by the repository's own extension is on disk before Quarto builds its extension registry.
 - **Compute environment**: R, Python, Julia, TinyTeX, and Chrome libraries are installed from what [`setup-quarto-compute`](#setup-quarto-compute) detects, so pages that execute code render.
 - **Single deployment at a time**: Pages runs queue rather than cancel; pull request renders get a per-ref concurrency group and run in parallel.
@@ -146,6 +168,9 @@ name: Pages
 
 on:
   pull_request:
+    # The render is skipped while the pull request is a draft, and
+    # `ready_for_review` is what runs it once the draft is lifted.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "docs/**"
       - "_extensions/**"
@@ -170,7 +195,7 @@ permissions:
 
 jobs:
   pages:
-    uses: mcanouil/quarto-workflows/.github/workflows/pages.yml@v1
+    uses: mcanouil/quarto-workflows/.github/workflows/pages.yml@v2
     permissions:
       contents: read
       pages: write
@@ -213,7 +238,7 @@ permissions:
 
 jobs:
   update:
-    uses: mcanouil/quarto-workflows/.github/workflows/quarto-extensions-updates.yml@v1
+    uses: mcanouil/quarto-workflows/.github/workflows/quarto-extensions-updates.yml@v2
     permissions:
       contents: write
       pull-requests: write
@@ -278,7 +303,7 @@ The detected formats and engines are written to the job summary by the action it
 
 [`test-setup-quarto-compute.yml`](.github/workflows/test-setup-quarto-compute.yml) runs the action against the fixtures under [`tests/`](tests), one per install path: `knitr` with a `renv.lock`, `jupyter` with and without a `pyproject.toml`, `julia`, a PDF format, and a Reveal.js deck converted with DeckTape as the release workflow does.
 Each fixture asserts what detection reported, checks that the toolchain it installed is usable, and renders.
-It runs on pull requests touching the action, its fixtures, or the slides script, on dispatch, and monthly.
+It runs on pull requests touching the action, its fixtures, or the slides script, on dispatch, and monthly, and skips a pull request that is still a draft.
 
 ### [`setup-git-user`](.github/actions/setup-git-user/action.yml)
 
@@ -289,8 +314,8 @@ A GitHub App is used only when both `gh-app-id` and `app-key` are supplied, sinc
 An id supplied without a key emits a warning and falls back, so a repository holding the `APP_ID` variable without the matching secret still runs.
 The action fails when it is given no credentials at all, rather than leaving every later `gh` call to fail on its own.
 
-Because a GitHub App token lasts an hour, a job that pushes long after it started resolves a fresh one first.
-The release workflow does this before updating the template thumbnail, which happens after the runtimes are installed and the project is rendered.
+Because a GitHub App token lasts an hour, a job that pushes long after it started would find its token expired.
+The release workflow keeps every push in a job that resolves a token and then uses it: the template thumbnail is pushed by a job of its own rather than by the render that produced it, which can spend most of that hour installing runtimes.
 
 #### Inputs
 
@@ -310,4 +335,4 @@ The release workflow does this before updating the template thumbnail, which hap
 
 [`test-setup-git-user.yml`](.github/workflows/test-setup-git-user.yml) runs the action once per credential path: no App, an App id without a key, a full App when the repository has one configured, and no credentials at all.
 Each asserts the identity written to the git configuration and that a token was resolved, through the shared [`assert-git-identity.sh`](.github/workflows/assets/assert-git-identity.sh), and the last asserts that the action refused to run.
-It runs on pull requests touching the action or that script, on dispatch, and monthly.
+It runs on pull requests touching the action or that script, on dispatch, and monthly, and skips a pull request that is still a draft.
