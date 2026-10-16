@@ -14,7 +14,7 @@ A change to a workflow input, or to what a workflow does to the repository calli
 Everything else is a minor or a patch.
 
 Within a release, the workflows are self-consistent: each one resolves the actions it uses, and the workflows it calls, from the same commit the caller pinned.
-That does not extend to the actions maintained elsewhere that these workflows call, `mcanouil/quarto-extensions-updater` and the `actions/*` family among them, which are themselves pinned to a major and so still move.
+That does not extend to the actions maintained elsewhere that these workflows call, `mcanouil/quarto-extensions-updater`, `mcanouil/release-actions` and the `actions/*` family among them, which are themselves pinned to a major and so still move.
 
 ## Usage
 
@@ -36,6 +36,9 @@ Key features include:
 - **Multi-format rendering**: Renders each detected format individually via `quarto render --to`.
 - **Slide-to-PDF conversion**: Automatic PDF generation using DeckTape for custom Reveal.js format extensions and presentations.
 - **GitHub integration**: Creates PRs for version bumps, deploys to GitHub Pages, and publishes releases with assets and install instructions.
+- **Version bump and release**: [`mcanouil/release-actions`](https://github.com/mcanouil/release-actions) bumps the version, rolls `CHANGELOG.md`, composes the release body from the changelog section and the generated notes, and creates the release.
+  An empty `## Unreleased` section, or no `CHANGELOG.md`, releases without a changelog section.
+  An existing tag or release stops the run before the version bump is pushed.
 - **Bump before render**: The workflow waits for the version bump pull request to merge, then renders and tags the exact commit it merged as, so the tag always carries the bumped manifest.
 - **Read-only render**: The job that renders the released project holds no write scope, and the template thumbnail it produces is committed back by a separate job.
 
