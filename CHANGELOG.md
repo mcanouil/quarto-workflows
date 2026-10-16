@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.3.0 (2026-10-16)
+
 - fix: Stop the release when GitHub cannot say whether the tag or release exists, instead of reading the error as a free version. (#48)
 
 ## 2.2.1 (2026-10-16)
