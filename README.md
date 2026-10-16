@@ -43,6 +43,10 @@ Key features include:
 - **Read-only render**: The job that renders the released project holds no write scope, and the template thumbnail it produces is committed back by a separate job.
 
 Both repo types record the release version and date in `CITATION.cff`, so the file is required.
+It needs a line `version: X.Y.Z` without quotes, and a line `date-released: "YYYY-MM-DD"` with the date in double quotes.
+A project can start from any date, such as `version: 2026.01.01`.
+An extension also needs `version: X.Y.Z` without quotes in its `_extension.yml`.
+The release stops before the version bump when one of these lines is missing or written another way.
 
 #### Inputs
 
