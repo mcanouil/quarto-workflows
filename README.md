@@ -8,6 +8,7 @@ Callers pin a tag rather than a branch.
 Three tags are published for every release: `vX.Y.Z`, which never moves, and `vX.Y` and `vX`, which roll forward on to each new release they cover.
 The examples below pin `vX`, which is the usual choice, since Dependabot's `github-actions` ecosystem updates a `uses:` reference to the next major on its own.
 The current major is `v2`.
+The body of each release is its section of [`CHANGELOG.md`](CHANGELOG.md), followed by the notes GitHub generates.
 
 A change to a workflow input, or to what a workflow does to the repository calling it, bumps the major.
 Everything else is a minor or a patch.
