@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.2.1 (2026-10-16)
+
 - fix: The thumbnail job no longer fails after its pull request merges. (#47)
 
 ## 2.2.0 (2026-10-16)
