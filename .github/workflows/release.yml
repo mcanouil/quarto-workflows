@@ -217,16 +217,40 @@ jobs:
             echo "has_docs=${HAS_DOCS}"
           } >> "${GITHUB_OUTPUT}"
 
-      # Both versioning paths record the release in CITATION.cff. The bump
-      # below would fail on a missing file too, but with a message about its
-      # targets rather than about the file.
-      - name: Check for CITATION.cff
+      # Both versioning paths record the release in CITATION.cff, and the bump
+      # rewrites lines of one exact shape. A missing or differently written
+      # line is named here, rather than as a pattern the bump did not match.
+      - name: Check the version lines
+        id: citation
+        env:
+          REPO_TYPE: ${{ steps.detect-project.outputs.repo_type }}
+          EXTENSION: ${{ steps.detect-project.outputs.extension_name }}
         shell: bash
         run: |
+          set -euo pipefail
           if [ ! -f "CITATION.cff" ]; then
             echo "::error::No CITATION.cff found: the release records its version and date there."
             exit 1
           fi
+
+          VERSION_LINE='^version: [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+          STATUS=0
+          if ! grep -Eq "${VERSION_LINE}" CITATION.cff; then
+            echo "::error file=CITATION.cff::CITATION.cff needs a line 'version: X.Y.Z', without quotes. A project can start from any date, such as 'version: 2026.01.01'."
+            STATUS=1
+          fi
+          if ! grep -Eq '^date-released: "[0-9]{4}-[0-9]{2}-[0-9]{2}"$' CITATION.cff; then
+            echo "::error file=CITATION.cff::CITATION.cff needs a line 'date-released: \"YYYY-MM-DD\"', with the date in double quotes."
+            STATUS=1
+          fi
+          if [ "${REPO_TYPE}" = "extension" ]; then
+            MANIFEST="_extensions/${EXTENSION}/_extension.yml"
+            if ! grep -Eq "${VERSION_LINE}" "${MANIFEST}"; then
+              echo "::error file=${MANIFEST}::${MANIFEST} needs a line 'version: X.Y.Z', without quotes."
+              STATUS=1
+            fi
+          fi
+          exit "${STATUS}"
 
       # An extension reads its version from the manifest it owns and bumps it
       # by the requested part; a project uses the date. Pins in the files a
@@ -1107,16 +1131,17 @@ jobs:
           name: release-notes
           path: .release-notes
 
-      # The release action reads `#` in an asset as the start of its label, so
-      # a file name holding one would be uploaded under the wrong name.
+      # The release action reads each asset as a glob, with `#` starting its
+      # label, so a file name holding `#`, `*`, `?`, `[` or `]` would not be
+      # uploaded as itself.
       - name: List the release assets
         id: assets
         shell: bash
         run: |
           set -euo pipefail
           ASSETS=$(find release_assets -type f | sort)
-          if BAD=$(grep -F '#' <<< "${ASSETS}"); then
-            echo "::error::Asset file names cannot hold '#': ${BAD//$'\n'/, }. Rename the rendered file."
+          if BAD=$(grep -E '[]#*?[]' <<< "${ASSETS}"); then
+            echo "::error::Asset file names cannot hold '#', '*', '?', '[' or ']': ${BAD//$'\n'/, }. Rename the rendered file."
             exit 1
           fi
           DELIM="ASSETS_$(openssl rand -hex 16)"
