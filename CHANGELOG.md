@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.2.0 (2026-10-16)
+
 - fix: Refuse an existing tag or release before the version bump is pushed. (#46)
 - fix: Name a missing or differently written version line before the version bump. (#46)
 
