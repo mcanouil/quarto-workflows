@@ -78,6 +78,9 @@ jobs:
     env:
       BRANCH: ci/bump-version
       COMMIT: "ci: bump version for release :rocket:"
+      # The files a user copies install lines from, whose pins the bump keeps
+      # on the released version.
+      INSTALL_FILES: "README.md template.qmd example.qmd"
       BUMP_VERSION: ${{ inputs.version }}
       # Auto-merge waits for whatever checks the default branch requires, so a
       # repository whose suite outlasts the default raises this rather than
@@ -247,7 +250,7 @@ jobs:
             fi
             printf -- "- file: CITATION.cff\n  pattern: '^date-released: \"{date}\"\$'\n"
             if [ "${REPO_TYPE}" = "extension" ]; then
-              for file in README.md template.qmd example.qmd; do
+              for file in ${INSTALL_FILES}; do
                 printf -- "- file: %s\n  pattern: '%s@{version}'\n  required: false\n" "${file}" "${GITHUB_REPOSITORY}"
               done
             fi
@@ -305,7 +308,7 @@ jobs:
         run: |
           set -euo pipefail
           REPO="${GITHUB_REPOSITORY}"
-          for file in README.md template.qmd example.qmd; do
+          for file in ${INSTALL_FILES}; do
             if [ -f "${file}" ]; then
               sed -i -E "/quarto (add|use template)/{s|([^/])${REPO}([^@/])|\1${REPO}@${VERSION}\2|g; s|([^/])${REPO}\$|\1${REPO}@${VERSION}|g; s|^${REPO}([^@/])|${REPO}@${VERSION}\1|g; s|^${REPO}\$|${REPO}@${VERSION}|g}" "${file}"
             fi
@@ -378,7 +381,7 @@ jobs:
 
           printf '%s\n' "${FILES}" | git add --pathspec-from-file=-
           if [ "${REPO_TYPE}" = "extension" ]; then
-            for file in README.md template.qmd example.qmd; do
+            for file in ${INSTALL_FILES}; do
               if [ -f "${file}" ]; then
                 git add "${file}"
               fi
