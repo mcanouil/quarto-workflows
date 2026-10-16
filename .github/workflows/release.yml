@@ -1049,14 +1049,17 @@ jobs:
 
     steps:
       # As in bump-version, cleared in the same way by the checkout below, and
-      # restored after it for the same reason.
+      # restored after it for the same reason. The assets hold the install
+      # header of the release body.
       - name: Checkout the workflow source
         uses: actions/checkout@v7
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
           path: .quarto-workflows
-          sparse-checkout: .github/actions
+          sparse-checkout: |
+            .github/actions
+            .github/workflows/assets
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -1082,7 +1085,9 @@ jobs:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
           path: .quarto-workflows
-          sparse-checkout: .github/actions
+          sparse-checkout: |
+            .github/actions
+            .github/workflows/assets
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -1093,57 +1098,63 @@ jobs:
           name: release-assets
           path: release_assets
 
-      - name: Release on GitHub
+      - name: Download the release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+          path: .release-notes
+
+      # The release action reads `#` in an asset as the start of its label, so
+      # a file name holding one would be uploaded under the wrong name.
+      - name: List the release assets
+        id: assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASSETS=$(find release_assets -type f | sort)
+          if BAD=$(grep -F '#' <<< "${ASSETS}"); then
+            echo "::error::Asset file names cannot hold '#': ${BAD//$'\n'/, }. Rename the rendered file."
+            exit 1
+          fi
+          DELIM="ASSETS_$(openssl rand -hex 16)"
+          {
+            echo "assets<<${DELIM}"
+            echo "${ASSETS}"
+            echo "${DELIM}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Compose the release body
+        id: notes
+        uses: mcanouil/release-actions/notes@v1
+        with:
+          notes-file: .release-notes/release-notes.md
+          version: ${{ needs.bump-version.outputs.version }}
+          tag: ${{ needs.bump-version.outputs.version }}
+          target: ${{ needs.bump-version.outputs.merge_sha }}
+          generate-notes: true
+          header: ${{ needs.bump-version.outputs.repo_type == 'extension' && '.quarto-workflows/.github/workflows/assets/release-header-extension.md' || '' }}
+          token: ${{ steps.setup-git-user.outputs.token }}
+
+      - name: Create the release
+        uses: mcanouil/release-actions/release@v1
+        with:
+          version: ${{ needs.bump-version.outputs.version }}
+          body-file: ${{ steps.notes.outputs.body-file }}
+          title: ${{ needs.bump-version.outputs.release_title }}
+          target: ${{ needs.bump-version.outputs.merge_sha }}
+          assets: ${{ steps.assets.outputs.assets }}
+          token: ${{ steps.setup-git-user.outputs.token }}
+
+      # The bump has merged by now, so a new run would bump again rather than
+      # release this version.
+      - name: Explain the recovery
+        if: ${{ failure() }}
         env:
-          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
           VERSION: ${{ needs.bump-version.outputs.version }}
-          RELEASE_TITLE: ${{ needs.bump-version.outputs.release_title }}
-          RELEASE_NOTES: ${{ needs.bump-version.outputs.release_notes }}
-          REPO_TYPE: ${{ needs.bump-version.outputs.repo_type }}
           MERGE_SHA: ${{ needs.bump-version.outputs.merge_sha }}
         shell: bash
         run: |
-          assets=()
-          while IFS= read -r -d '' file; do
-            assets+=("${file}")
-          done < <(find release_assets -type f -print0)
-
-          PREVIOUS_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null) || PREVIOUS_TAG=""
-          GENERATE_NOTES_PAYLOAD=$(jq -n \
-            --arg tag "${VERSION}" \
-            --arg previous "${PREVIOUS_TAG}" \
-            'if $previous == "" then {tag_name: $tag} else {tag_name: $tag, previous_tag_name: $previous} end'
-          )
-          AUTO_NOTES=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
-            --method POST \
-            --input - <<< "${GENERATE_NOTES_PAYLOAD}" \
-            --jq '.body' 2>/dev/null) || AUTO_NOTES=""
-
-          {
-            if [ "${REPO_TYPE}" = "extension" ]; then
-              echo "## Installation"
-              echo ""
-              echo '```bash'
-              echo "quarto add ${GITHUB_REPOSITORY}@${VERSION}"
-              echo '```'
-              echo ""
-            fi
-            if [ -n "${RELEASE_NOTES}" ]; then
-              echo "## Changelog"
-              echo ""
-              echo "${RELEASE_NOTES}"
-              echo ""
-            fi
-            if [ -n "${AUTO_NOTES}" ]; then
-              echo "${AUTO_NOTES}"
-            fi
-          } > release_notes.md
-
-          gh release create "${VERSION}" \
-            --target "${MERGE_SHA}" \
-            --title "${RELEASE_TITLE}" \
-            --notes-file release_notes.md \
-            "${assets[@]}"
+          echo "::error::The version bump for ${VERSION} merged as ${MERGE_SHA}, but the release was not created. Running this workflow again would bump to the next version. Create release ${VERSION} at ${MERGE_SHA} by hand, or revert the version bump pull request and run this workflow again."
 
       - name: Display workflow summary
         env:
