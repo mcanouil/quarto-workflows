@@ -1019,8 +1019,12 @@ jobs:
           echo "Pull request: ${PR_URL}"
           sleep 5
           # Named rather than inferred from the checked-out branch, as the bump
-          # job does.
-          gh pr merge "${PR_URL}" --auto --squash --delete-branch
+          # job does. `--repo` keeps gh away from the local checkout: when the
+          # pull request merges at once, `--delete-branch` would otherwise
+          # switch to a local copy of the base, built from `origin/<base>`,
+          # which a checkout by SHA never fetched. The remote branch is still
+          # deleted.
+          gh pr merge "${PR_URL}" --repo "${GITHUB_REPOSITORY}" --auto --squash --delete-branch
 
   # A repository without docs/ publishes its rendered example or template to
   # Pages, as it always has. The deployment sits in its own job so the
