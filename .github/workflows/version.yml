@@ -76,6 +76,7 @@ jobs:
           bump: ${{ inputs.version }}
           version-source: tag
           tag-prefix: v
+          token: ${{ steps.setup-git-user.outputs.token }}
 
       # The README tells callers which major to pin, and a @v{major} target
       # would also rewrite pins such as actions/checkout@v7. A major cut
@@ -102,24 +103,6 @@ jobs:
           fi
 
           echo "README.md pins ${MAJOR}."
-
-      # The release step refuses an existing tag or release too, but only after
-      # the push, which would leave the bump on the default branch.
-      - name: Refuse an existing tag or release
-        env:
-          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
-          TAG: v${{ steps.bump.outputs.version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" > /dev/null; then
-            echo "::error::Tag ${TAG} already exists. Delete it, or create its release by hand, then dispatch this workflow again."
-            exit 1
-          fi
-          if gh release view "${TAG}" > /dev/null 2>&1; then
-            echo "::error::A release ${TAG} already exists, perhaps as a draft. Delete it, then dispatch this workflow again."
-            exit 1
-          fi
 
       # The App is exempt from the pull request rule of the default branch, and
       # [skip ci] keeps CI from running again on a tree it has checked.
