@@ -85,10 +85,9 @@ jobs:
       MERGE_TIMEOUT: ${{ inputs.merge-timeout }}
 
     outputs:
-      version: ${{ steps.bump-version.outputs.version }}
+      version: ${{ steps.bump.outputs.version }}
       merge_sha: ${{ steps.bump-version.outputs.merge_sha }}
       release_title: ${{ steps.bump-version.outputs.release_title }}
-      release_notes: ${{ steps.bump-version.outputs.release_notes }}
       summary: ${{ steps.bump-version.outputs.summary }}
       repo_type: ${{ steps.detect-project.outputs.repo_type }}
       extension_name: ${{ steps.detect-project.outputs.extension_name }}
@@ -215,12 +214,151 @@ jobs:
             echo "has_docs=${HAS_DOCS}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Bump Version
+      # Both versioning paths record the release in CITATION.cff. The bump
+      # below would fail on a missing file too, but with a message about its
+      # targets rather than about the file.
+      - name: Check for CITATION.cff
+        shell: bash
+        run: |
+          if [ ! -f "CITATION.cff" ]; then
+            echo "::error::No CITATION.cff found: the release records its version and date there."
+            exit 1
+          fi
+
+      # An extension reads its version from the manifest it owns and bumps it
+      # by the requested part; a project uses the date. Pins in the files a
+      # user copies from are rewritten wherever they exist.
+      - name: Build the bump targets
+        id: targets
+        env:
+          REPO_TYPE: ${{ steps.detect-project.outputs.repo_type }}
+          EXTENSION: ${{ steps.detect-project.outputs.extension_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TARGETS_FILE="${RUNNER_TEMP}/bump-targets.yml"
+          {
+            if [ "${REPO_TYPE}" = "extension" ]; then
+              printf -- "- file: _extensions/%s/_extension.yml\n  pattern: '^version: {version}\$'\n  source: true\n" "${EXTENSION}"
+              printf -- "- file: CITATION.cff\n  pattern: '^version: {version}\$'\n"
+            else
+              printf -- "- file: CITATION.cff\n  pattern: '^version: {version}\$'\n  source: true\n"
+            fi
+            printf -- "- file: CITATION.cff\n  pattern: '^date-released: \"{date}\"\$'\n"
+            if [ "${REPO_TYPE}" = "extension" ]; then
+              for file in README.md template.qmd example.qmd; do
+                printf -- "- file: %s\n  pattern: '%s@{version}'\n  required: false\n" "${file}" "${GITHUB_REPOSITORY}"
+              done
+            fi
+          } > "${TARGETS_FILE}"
+          cat "${TARGETS_FILE}"
+
+          if [ "${REPO_TYPE}" = "extension" ]; then
+            BUMP="${BUMP_VERSION}"
+          else
+            BUMP="calver"
+          fi
+
+          DELIM="TARGETS_$(openssl rand -hex 16)"
+          {
+            echo "bump=${BUMP}"
+            echo "targets<<${DELIM}"
+            cat "${TARGETS_FILE}"
+            echo "${DELIM}"
+          } >> "${GITHUB_OUTPUT}"
+
+      # A release with nothing under "## Unreleased", or with no CHANGELOG.md at
+      # all, goes out without a changelog section and leaves the file alone, as
+      # it always has. Only "## Unreleased" counts, as before.
+      - name: Choose the changelog
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHANGELOG=""
+          if [ -f "CHANGELOG.md" ] &&
+            [ -n "$(awk '/^## Unreleased/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md | tr -d '[:space:]')" ]; then
+            CHANGELOG="CHANGELOG.md"
+          else
+            echo "No CHANGELOG.md, or nothing under its Unreleased heading: the release has no changelog section."
+          fi
+          echo "path=${CHANGELOG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Bump the version
+        id: bump
+        uses: mcanouil/release-actions/bump@v1
+        with:
+          bump: ${{ steps.targets.outputs.bump }}
+          targets: ${{ steps.targets.outputs.targets }}
+          changelog: ${{ steps.changelog.outputs.path }}
+
+      # The bump only replaces pins that exist. A new extension's install lines
+      # have none yet, so the version is added after the repository name on
+      # every `quarto add` or `quarto use template` line that lacks one.
+      - name: Pin unpinned install lines
+        id: pins
+        if: ${{ steps.detect-project.outputs.repo_type == 'extension' }}
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY}"
+          for file in README.md template.qmd example.qmd; do
+            if [ -f "${file}" ]; then
+              sed -i -E "/quarto (add|use template)/{s|([^/])${REPO}([^@/])|\1${REPO}@${VERSION}\2|g; s|([^/])${REPO}\$|\1${REPO}@${VERSION}|g; s|^${REPO}([^@/])|${REPO}@${VERSION}\1|g; s|^${REPO}\$|${REPO}@${VERSION}|g}" "${file}"
+            fi
+          done
+
+      # Checked before the bump branch is pushed, so a version that was
+      # released already stops here rather than after its pull request merged.
+      - name: Refuse an existing tag or release
+        env:
+          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" > /dev/null; then
+            echo "::error::Tag ${VERSION} already exists. Bump to another version, or delete the tag if a failed run left it, then run this workflow again."
+            exit 1
+          fi
+          if gh release view "${VERSION}" > /dev/null 2>&1; then
+            echo "::error::A release ${VERSION} already exists, perhaps as a draft. Delete it, then run this workflow again."
+            exit 1
+          fi
+
+      # The release job runs on another runner, so the changelog section
+      # travels as an artifact. It is empty when the release has no section.
+      # Uploaded before the push, so a failure here leaves nothing behind.
+      - name: Stage the release notes
+        env:
+          NOTES_FILE: ${{ steps.bump.outputs.notes-file }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/release-notes"
+          cp "${NOTES_FILE}" "${RUNNER_TEMP}/release-notes/release-notes.md"
+
+      - name: Upload the release notes
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes/release-notes.md
+          retention-days: 1
+          overwrite: true
+
+      - name: Open and merge the version bump pull request
         id: bump-version
         env:
           GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
           REPO_TYPE: ${{ steps.detect-project.outputs.repo_type }}
           EXTENSION: ${{ steps.detect-project.outputs.extension_name }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          PREVIOUS: ${{ steps.bump.outputs.previous }}
+          DATE: ${{ steps.bump.outputs.date }}
+          FILES: ${{ steps.bump.outputs.files }}
         shell: bash
         run: |
           # A run that died between creating the pull request and merging it
@@ -238,111 +376,13 @@ jobs:
           fi
           git checkout -B "${BRANCH}"
 
-          # Both versioning paths record the release in CITATION.cff.
-          if [ ! -f "CITATION.cff" ]; then
-            echo "::error::No CITATION.cff found: the release records its version and date there."
-            exit 1
-          fi
-
-          DATE=$(date +%Y-%m-%d)
-
+          printf '%s\n' "${FILES}" | git add --pathspec-from-file=-
           if [ "${REPO_TYPE}" = "extension" ]; then
-            # Semantic versioning for extensions
-            MANIFEST="_extensions/${EXTENSION}/_extension.yml"
-            echo "Manifest: ${MANIFEST}"
-            # A manifest without a version: line makes grep exit non-zero, which
-            # would end the job here rather than at the check below.
-            CURRENT_VERSION=$(grep "^version:" "${MANIFEST}" | sed 's/version: //;s/"//g' || true)
-            echo "Current Version: ${CURRENT_VERSION}"
-            if [ -z "${CURRENT_VERSION}" ]; then
-              echo "::error::No 'version:' field found in ${MANIFEST}"
-              exit 1
-            fi
-            MAJOR=$(echo "${CURRENT_VERSION}" | cut -d. -f1)
-            MINOR=$(echo "${CURRENT_VERSION}" | cut -d. -f2)
-            PATCH=$(echo "${CURRENT_VERSION}" | cut -d. -f3)
-            echo "Bumping Version: ${BUMP_VERSION}"
-            case "${BUMP_VERSION}" in
-              "major")
-                MAJOR=$((MAJOR + 1))
-                MINOR=0
-                PATCH=0
-                ;;
-              "minor")
-                MINOR=$((MINOR + 1))
-                PATCH=0
-                ;;
-              *)
-                PATCH=$((PATCH + 1))
-                ;;
-            esac
-            VERSION="${MAJOR}.${MINOR}.${PATCH}"
-            echo "New Version: ${VERSION}"
-            sed -i "s/^version:.*/version: ${VERSION}/" "${MANIFEST}"
-            sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
-            sed -i "s/^date-released:.*/date-released: \"${DATE}\"/" CITATION.cff
-            REPO="${GITHUB_REPOSITORY}"
             for file in README.md template.qmd example.qmd; do
               if [ -f "${file}" ]; then
-                sed -i "s|${REPO}@[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*|${REPO}@${VERSION}|g" "${file}"
-                sed -i -E "/quarto (add|use template)/{s|([^/])${REPO}([^@/])|\1${REPO}@${VERSION}\2|g; s|([^/])${REPO}\$|\1${REPO}@${VERSION}|g; s|^${REPO}([^@/])|${REPO}@${VERSION}\1|g; s|^${REPO}\$|${REPO}@${VERSION}|g}" "${file}"
-                git add "${file}" || echo "No changes to add"
+                git add "${file}"
               fi
             done
-            git add CITATION.cff || echo "No changes to add"
-            git add "${MANIFEST}" || echo "No changes to add"
-
-            RELEASE_TITLE=${EXTENSION^^}
-            RELEASE_TITLE="${RELEASE_TITLE//-/ } ${VERSION}"
-          else
-            # Date-based versioning for projects
-            CURRENT_DATE=$(date +%Y-%m-%d)
-            # A missing field makes grep exit non-zero, which under `set -e`
-            # would end the job before either value can be checked.
-            PREV_DATE=$(grep '^date-released:' CITATION.cff | awk '{print $2}' | tr -d '"' || true)
-            VERSION=$(grep '^version:' CITATION.cff | awk '{print $2}' || true)
-            if [ "${PREV_DATE}" = "${CURRENT_DATE}" ]; then
-              # Only this branch reuses the recorded version; the other replaces it.
-              if [ -z "${VERSION}" ]; then
-                echo "::error::No 'version:' field found in CITATION.cff"
-                exit 1
-              fi
-              if [[ "${VERSION}" =~ -([0-9]+)$ ]]; then
-                NUMBER=$(( BASH_REMATCH[1] + 1 ))
-                VERSION="${VERSION%-*}-${NUMBER}"
-              else
-                VERSION="${VERSION}-2"
-              fi
-            else
-              VERSION=${CURRENT_DATE//-/.}
-            fi
-            sed -i "s/^date-released:.*/date-released: \"${DATE}\"/" CITATION.cff
-            sed -i "s/^version:.*/version: ${VERSION}/" CITATION.cff
-            git add CITATION.cff || echo "No changes to add"
-            RELEASE_TITLE="${DATE}"
-          fi
-
-          # Shared: update CHANGELOG.md
-          RELEASE_NOTES=""
-          if [ -f "CHANGELOG.md" ]; then
-            RELEASE_NOTES=$(awk '/^## Unreleased/{flag=1; next} /^## /{flag=0} flag' CHANGELOG.md | sed '/./,$!d')
-            # A byte budget can land mid-line, and mid-character on anything
-            # outside ASCII, so the partial line the cut leaves is dropped.
-            BOUNDED=$(printf '%s' "${RELEASE_NOTES}" | head -c 10000)
-            if [ "${BOUNDED}" != "${RELEASE_NOTES}" ]; then
-              # A single line longer than the budget has no whole line to keep,
-              # and emptying the notes here would also skip the heading rewrite
-              # below, so the cut text stands in that case.
-              TRIMMED=$(printf '%s' "${BOUNDED}" | sed '$d')
-              RELEASE_NOTES="${TRIMMED:-${BOUNDED}}"
-            fi
-            if [ -n "${RELEASE_NOTES}" ]; then
-              sed -i "s/^## Unreleased$/## ${VERSION} (${DATE})/" CHANGELOG.md
-              sed -i "/^## ${VERSION} (${DATE})$/i\\
-          ## Unreleased\\
-          " CHANGELOG.md
-              git add CHANGELOG.md
-            fi
           fi
 
           git commit -m "${COMMIT}" || echo "No changes to commit"
@@ -414,13 +454,20 @@ jobs:
             exit 1
           fi
 
+          if [ "${REPO_TYPE}" = "extension" ]; then
+            RELEASE_TITLE=${EXTENSION^^}
+            RELEASE_TITLE="${RELEASE_TITLE//-/ } ${VERSION}"
+          else
+            RELEASE_TITLE="${DATE}"
+          fi
+
           # Build version bump summary
           SUMMARY="## Version Bump\n\n"
           SUMMARY+="| Field | Value |\n"
           SUMMARY+="|-------|--------|\n"
           if [ "${REPO_TYPE}" = "extension" ]; then
             SUMMARY+="| Extension | \`${EXTENSION}\` |\n"
-            SUMMARY+="| Previous Version | \`${CURRENT_VERSION}\` |\n"
+            SUMMARY+="| Previous Version | \`${PREVIOUS}\` |\n"
             SUMMARY+="| New Version | \`${VERSION}\` |\n"
             SUMMARY+="| Bump Type | \`${BUMP_VERSION}\` |\n"
           else
@@ -429,21 +476,10 @@ jobs:
           SUMMARY+="| Release Date | \`${DATE}\` |\n"
 
           {
-            echo "version=${VERSION}"
             echo "release_title=${RELEASE_TITLE}"
             echo "summary=${SUMMARY}"
             echo "merge_sha=${MERGE_SHA}"
           } >> "${GITHUB_OUTPUT}"
-          if [ -n "${RELEASE_NOTES}" ]; then
-            # A changelog is free to contain any fixed delimiter we might pick,
-            # and a line matching it would end the value early.
-            DELIM="RELEASE_NOTES_$(openssl rand -hex 16)"
-            {
-              echo "release_notes<<${DELIM}"
-              echo "${RELEASE_NOTES}"
-              echo "${DELIM}"
-            } >> "${GITHUB_OUTPUT}"
-          fi
 
   deploy:
     runs-on: ubuntu-latest
