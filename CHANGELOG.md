@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix: The thumbnail job no longer fails after its pull request merges. (#47)
+
 ## 2.2.0 (2026-10-16)
 
 - fix: Refuse an existing tag or release before the version bump is pushed. (#46)
