@@ -327,6 +327,7 @@ jobs:
           DATE: ${{ steps.bump.outputs.date }}
         shell: bash
         run: |
+          set -euo pipefail
           if [ "${REPO_TYPE}" = "extension" ]; then
             RELEASE_TITLE=${EXTENSION^^}
             RELEASE_TITLE="${RELEASE_TITLE//-/ } ${VERSION}"
