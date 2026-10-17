@@ -761,9 +761,7 @@ jobs:
     timeout-minutes: 15
     continue-on-error: true
 
-    needs:
-      - bump-version
-      - deploy
+    needs: deploy
 
     if: ${{ needs.deploy.outputs.has_thumbnail == 'true' }}
 
