@@ -75,9 +75,8 @@ jobs:
 
       # land stops a release dispatched from any branch but the default one,
       # before it commits. The App is exempt from the pull request rule of the
-      # default branch, and
-      # the [skip ci] of the release message keeps CI from running again on a
-      # tree it has checked.
+      # default branch, and the [skip ci] of the release message keeps CI from
+      # running again on a tree it has checked.
       - name: Push the version
         id: push
         uses: mcanouil/release-actions/land@v1
