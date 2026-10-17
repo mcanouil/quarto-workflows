@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-- feat: Add a `quarto-version` input to the extensions updates workflow, so a caller can run the updater on the Quarto pre-release.
-- feat: Title a second project release on the same day `YYYY-MM-DD (2)`, and so on, instead of repeating the date.
+- feat: Add a `quarto-version` input to the extensions updates workflow, so a caller can run the updater on the Quarto pre-release. (#50)
+- feat: Title a second project release on the same day `YYYY-MM-DD (2)`, and so on, instead of repeating the date. (#50)
 - refactor: Resolve tokens with the `token` action of `release-actions`, and land the version bump and the thumbnail with its `land` action.
-  The version bump pull request now comes from `release/<version>`, and a `GH_TOKEN` commits as the owner of that token.
+  The version bump pull request now comes from `release/<version>`, and a `GH_TOKEN` commits as the owner of that token. (#50)
 
 ## 2.3.0 (2026-10-16)
 
