@@ -41,6 +41,26 @@ Key features include:
   An existing tag or release stops the run before the version bump is pushed.
 - **Bump before render**: The workflow waits for the version bump pull request to merge, then renders and tags the exact commit it merged as, so the tag always carries the bumped manifest.
 - **Read-only render**: The job that renders the released project holds no write scope, and the template thumbnail it produces is committed back by a separate job.
+- **Safe repeat**: If a run lands the version bump and then fails, the next run stops and says which release to create by hand.
+
+The jobs run in this order:
+
+```mermaid
+flowchart TD
+  caller(["caller release.yml"]) --> bv
+  subgraph bv["bump-version"]
+    direction TB
+    bv1["token"] --> bv2["detect the project type,<br/>build the bump targets"]
+    bv2 --> bv3["bump"] --> bv4["pin the install lines<br/>(extension)"]
+    bv4 --> bv5["land: pull request,<br/>wait for the merge"]
+  end
+  bv --> deploy["deploy<br/>render, upload Pages and release assets"]
+  deploy --> release["release<br/>notes and release on the merged commit"]
+  deploy --> pp["publish-pages<br/>(no docs/ site)"]
+  deploy --> thumb["thumbnail<br/>land: ci/update-thumbs"]
+  release --> dp["deploy-pages<br/>pages.yml from the tag<br/>(docs/ site)"]
+  release --> out(["outputs: tag, sha"])
+```
 
 Both repo types record the release version and date in `CITATION.cff`, so the file is required.
 It needs a line `version: X.Y.Z` without quotes, and a line `date-released: "YYYY-MM-DD"` with the date in double quotes.
@@ -57,6 +77,34 @@ The release stops before the version bump when one of these lines is missing or 
 | `quarto`        | `"release"` | Quarto version to install (`release` or `pre-release`).                                         |
 | `gh-app-id`     |             | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable.    |
 | `merge-timeout` | `1800`      | Seconds to wait for the version bump pull request to merge.                                     |
+| `notes-header`  | `""`        | Template file in the caller, put first in the release body. Default: the install header for an extension, none for a project. |
+
+#### Outputs
+
+| Output | Description |
+| --- | --- |
+| `tag` | Tag of the release. |
+| `sha` | Commit of the release, which is the merged version bump. |
+
+A later job of the caller can use them, for example to attach more files to the release:
+
+```yaml
+  attach:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.sha }}
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: gh release upload "${TAG}" dist/*
+```
+
+The `notes-header` template can contain `{version}`, `{tag}`, `{date}` and `{repository}`.
 
 #### Authentication
 

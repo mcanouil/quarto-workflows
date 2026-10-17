@@ -38,6 +38,18 @@ on:
         required: false
         default: 1800
         type: number
+      notes-header:
+        description: "Path of a template file in the caller, put first in the release body. Placeholders: {version}, {tag}, {date}, {repository}. Default: the install header for an extension, none for a project"
+        required: false
+        default: ""
+        type: string
+    outputs:
+      tag:
+        description: "Tag of the release"
+        value: ${{ jobs.release.outputs.tag }}
+      sha:
+        description: "Commit of the release, the merged version bump"
+        value: ${{ jobs.bump-version.outputs.merge_sha }}
 
 # Declared per job rather than once here, so the job that renders the released
 # project, which runs executed chunks and pre-render and post-render scripts the
@@ -860,6 +872,9 @@ jobs:
     permissions:
       contents: write
 
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+
     steps:
       - name: Get the token
         uses: mcanouil/release-actions/token@v1
@@ -931,10 +946,11 @@ jobs:
           tag: ${{ needs.bump-version.outputs.version }}
           target: ${{ needs.bump-version.outputs.merge_sha }}
           generate-notes: true
-          header: ${{ needs.bump-version.outputs.repo_type == 'extension' && '.quarto-workflows/.github/workflows/assets/release-header-extension.md' || '' }}
+          header: ${{ inputs.notes-header || (needs.bump-version.outputs.repo_type == 'extension' && '.quarto-workflows/.github/workflows/assets/release-header-extension.md' || '') }}
           token: ${{ steps.token.outputs.token }}
 
       - name: Create the release
+        id: release
         uses: mcanouil/release-actions/release@v1
         with:
           version: ${{ needs.bump-version.outputs.version }}
@@ -944,17 +960,6 @@ jobs:
           target: ${{ needs.bump-version.outputs.merge_sha }}
           assets: ${{ steps.assets.outputs.assets }}
           token: ${{ steps.token.outputs.token }}
-
-      # The bump has merged by now, so a new run would bump again rather than
-      # release this version.
-      - name: Explain the recovery
-        if: ${{ failure() }}
-        env:
-          VERSION: ${{ needs.bump-version.outputs.version }}
-          MERGE_SHA: ${{ needs.bump-version.outputs.merge_sha }}
-        shell: bash
-        run: |
-          echo "::error::The version bump for ${VERSION} merged as ${MERGE_SHA}, but the release was not created. Running this workflow again would bump to the next version. Create release ${VERSION} at ${MERGE_SHA} by hand, or revert the version bump pull request and run this workflow again."
 
       - name: Display workflow summary
         env:

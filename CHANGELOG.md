@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- feat: Add the `tag` and `sha` outputs to the release workflow, so a later job of the caller can work on the release. (#51)
+- feat: Add the `notes-header` input to the release workflow, a template from the caller at the start of the release body. (#51)
+- refactor: Let `release-actions` v1.3.0 stop a repeated or unsafe release, and drop the steps that did this in the workflows. (#51)
+
 ## 2.4.0 (2026-10-17)
 
 - feat: Add a `quarto-version` input to the extensions updates workflow, so a caller can run the updater on the Quarto pre-release. (#50)
