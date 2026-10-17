@@ -30,6 +30,11 @@ on:
         description: "GitHub App ID"
         required: false
         type: string
+      quarto-version:
+        description: "Quarto version to install (release, pre-release, or a version number)"
+        required: false
+        default: "release"
+        type: string
 
 # Keyed on the ref alone: the scheduled run and a dispatch of the same workflow
 # would otherwise race over creating the same update pull requests.
@@ -45,37 +50,25 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
-
-      # The action lives beside this workflow, so it is read from the commit the
-      # caller pinned rather than from a branch that moves under it. A local
-      # `uses: ./` is resolved against the workspace, which is why it is checked
-      # out into one, after the checkout above that would clear it.
-      - name: Checkout the workflow source
-        uses: actions/checkout@v7
+      - name: Get the token
+        uses: mcanouil/release-actions/token@v1
+        id: token
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .quarto-workflows
-          sparse-checkout: .github/actions
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
-      - name: Setup Git User
-        uses: ./.quarto-workflows/.github/actions/setup-git-user
-        id: setup-git-user
-        with:
-          gh-app-id: ${{ inputs.gh-app-id || vars.APP_ID }}
+          app-id: ${{ inputs.gh-app-id || vars.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
-          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
+
+      - uses: actions/checkout@v7
 
       - name: Setup Quarto
         uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: ${{ inputs.quarto-version || 'release' }}
 
       - name: Update Quarto extensions
         uses: mcanouil/quarto-extensions-updater@v2
         with:
-          github-token: ${{ steps.setup-git-user.outputs.token }}
+          github-token: ${{ steps.token.outputs.token }}
           pr-labels: "Type: Dependencies :arrow_up:"
           group-updates: true
           scan-directories: ${{ inputs.scan-directories }}
