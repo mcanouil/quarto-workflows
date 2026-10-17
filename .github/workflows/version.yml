@@ -63,7 +63,8 @@ jobs:
           token: ${{ steps.token.outputs.token }}
           # The usage examples pin the major being cut. Each pattern names a
           # workflow of this repository, so pins such as actions/checkout@v7
-          # stay as they are.
+          # stay as they are. A workflow newly documented in README.md needs
+          # its own pattern here.
           targets: |
             - file: README.md
               pattern: 'mcanouil/quarto-workflows/.github/workflows/release.yml@v{major}'
@@ -72,7 +73,9 @@ jobs:
             - file: README.md
               pattern: 'mcanouil/quarto-workflows/.github/workflows/quarto-extensions-updates.yml@v{major}'
 
-      # The App is exempt from the pull request rule of the default branch, and
+      # land stops a release dispatched from any branch but the default one,
+      # before it commits. The App is exempt from the pull request rule of the
+      # default branch, and
       # the [skip ci] of the release message keeps CI from running again on a
       # tree it has checked.
       - name: Push the version
