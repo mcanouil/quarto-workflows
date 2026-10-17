@@ -779,13 +779,14 @@ jobs:
           app-key: ${{ secrets.APP_KEY }}
           token: ${{ secrets.GH_TOKEN }}
 
-      # The default branch rather than the released commit: land opens the
+      # The tip of the branch rather than the released commit: land opens the
       # pull request from a branch, and the thumbnail merges into whatever the
-      # default branch holds by now.
+      # branch holds by now, the version bump included.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           token: ${{ steps.token.outputs.token }}
+          ref: ${{ github.ref_name }}
 
       - name: Download the template thumbnail
         uses: actions/download-artifact@v8
