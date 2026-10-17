@@ -799,7 +799,7 @@ jobs:
         with:
           mode: pull-request
           files: .github/template.png
-          message: "ci: update thumbs"
+          message: "ci: update thumbs :art:"
           branch: ci/update-thumbs
           body: Regenerated `.github/template.png` from the rendered slides.
           wait: false
