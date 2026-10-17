@@ -61,12 +61,12 @@ The release stops before the version bump when one of these lines is missing or 
 #### Authentication
 
 A GitHub App is optional.
-Each job that writes resolves its own token through the [`setup-git-user`](#setup-git-user) action and uses it for every `gh` call, and for the checkout it pushes from, so the version bump, the thumbnail update, and the release are attributed to whichever identity was resolved.
+Each job that writes resolves its own token through the [`token`](https://github.com/mcanouil/release-actions#token) action of `release-actions` and uses it for every `gh` call, and for the checkout it pushes from, so the version bump, the thumbnail update, and the release are attributed to whichever identity was resolved.
 
 | Configuration                                        | Token                              | Identity              |
 | ---------------------------------------------------- | ---------------------------------- | --------------------- |
 | `gh-app-id` (or the `APP_ID` variable) and `APP_KEY` | GitHub App installation token      | `<app-slug>[bot]`     |
-| `GH_TOKEN` secret                                    | The personal access token supplied | `github-actions[bot]` |
+| `GH_TOKEN` secret                                    | The personal access token supplied | The token's owner     |
 | Neither                                              | The default `GITHUB_TOKEN`         | `github-actions[bot]` |
 
 Secrets reach the workflow through `secrets: inherit`.
@@ -224,12 +224,13 @@ The resulting pull request carries the `Type: Dependencies :arrow_up:` label, wh
 
 #### Inputs
 
-| Input              | Default | Description                                                                                  |
-| ------------------ | ------- | -------------------------------------------------------------------------------------------- |
-| `scan-directories` | `""`    | Newline-separated directories to scan, in addition to the repository root.                   |
-| `gh-app-id`        |         | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable. |
+| Input              | Default   | Description                                                                                  |
+| ------------------ | --------- | -------------------------------------------------------------------------------------------- |
+| `scan-directories` | `""`      | Newline-separated directories to scan, in addition to the repository root.                   |
+| `gh-app-id`        |           | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable. |
+| `quarto-version`   | `release` | Quarto version to install: `release`, `pre-release`, or a version number.                    |
 
-The token is resolved by [`setup-git-user`](#setup-git-user), on the same terms as the Release workflow.
+The token is resolved by the `token` action of `release-actions`, on the same terms as the Release workflow.
 
 #### Example
 
@@ -316,7 +317,8 @@ It runs on pull requests touching the action, its fixtures, or the slides script
 ### [`setup-git-user`](.github/actions/setup-git-user/action.yml)
 
 A composite action that resolves the token the calling job commits, pushes, and calls `gh` with, and configures the matching git identity.
-It is used by `release.yml` and `quarto-extensions-updates.yml`.
+The workflows of this repository now use the [`token`](https://github.com/mcanouil/release-actions#token) action of `release-actions` instead.
+This action stays for the repositories that call it, until the next major release removes it.
 
 A GitHub App is used only when both `gh-app-id` and `app-key` are supplied, since [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token) requires the private key.
 An id supplied without a key emits a warning and falls back, so a repository holding the `APP_ID` variable without the matching secret still runs.
