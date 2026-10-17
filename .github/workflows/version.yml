@@ -73,7 +73,7 @@ jobs:
             - file: README.md
               pattern: 'mcanouil/quarto-workflows/.github/workflows/quarto-extensions-updates.yml@v{major}'
             - file: README.md
-              pattern: '^The current major is `v{major}`\.$'
+              pattern: '^The current major is `v{major}`.$'
 
       # land stops a release dispatched from any branch but the default one,
       # before it commits. The App is exempt from the pull request rule of the
