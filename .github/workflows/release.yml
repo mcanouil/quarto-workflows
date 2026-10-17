@@ -76,73 +76,37 @@ jobs:
       pull-requests: write
 
     env:
-      BRANCH: ci/bump-version
-      COMMIT: "ci: bump version for release :rocket:"
       # The files a user copies install lines from, whose pins the bump keeps
       # on the released version.
       INSTALL_FILES: "README.md template.qmd example.qmd"
       BUMP_VERSION: ${{ inputs.version }}
-      # Auto-merge waits for whatever checks the default branch requires, so a
-      # repository whose suite outlasts the default raises this rather than
-      # forking the workflow.
-      MERGE_TIMEOUT: ${{ inputs.merge-timeout }}
 
     outputs:
       version: ${{ steps.bump.outputs.version }}
-      merge_sha: ${{ steps.bump-version.outputs.merge_sha }}
-      release_title: ${{ steps.bump-version.outputs.release_title }}
-      summary: ${{ steps.bump-version.outputs.summary }}
+      date: ${{ steps.bump.outputs.date }}
+      merge_sha: ${{ steps.land.outputs.sha }}
+      release_title: ${{ steps.title.outputs.release_title }}
+      summary: ${{ steps.title.outputs.summary }}
       repo_type: ${{ steps.detect-project.outputs.repo_type }}
       extension_name: ${{ steps.detect-project.outputs.extension_name }}
       has_docs: ${{ steps.detect-project.outputs.has_docs }}
 
     steps:
-      # The actions this workflow uses live beside it, so they are read from the
-      # commit the caller pinned rather than from a branch that moves under it.
-      # A local `uses: ./` is resolved against the workspace, which is why they
-      # are checked out into it rather than referenced across repositories.
-      - name: Checkout the workflow source
-        uses: actions/checkout@v7
+      # A push made with the default GITHUB_TOKEN triggers no workflow, which
+      # leaves the version bump pull request without the checks its auto-merge
+      # waits for, so a repository with a GitHub App pushes as the App instead.
+      - name: Get the token
+        uses: mcanouil/release-actions/token@v1
+        id: token
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .quarto-workflows
-          sparse-checkout: .github/actions
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
-      # Before the checkout, so the branch this job pushes carries the resolved
-      # identity. The action needs no working tree of its own. A push made with
-      # the default GITHUB_TOKEN triggers no workflow, which leaves the version
-      # bump pull request without the checks its auto-merge waits for, so a
-      # repository with a GitHub App pushes as the App instead.
-      - name: Setup Git User
-        uses: ./.quarto-workflows/.github/actions/setup-git-user
-        id: setup-git-user
-        with:
-          gh-app-id: ${{ env.APP_ID }}
+          app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
-          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
 
-      # This clears the workspace, and with it the checkout above.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          token: ${{ steps.setup-git-user.outputs.token }}
-
-      # The runner resolves an action's post step from disk when the job ends,
-      # so the source the checkout above cleared has to be back by then or the
-      # job fails after all its work is done. Restoring it here rather than at
-      # the end keeps it present for whatever the job does in between.
-      - name: Restore the workflow source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .quarto-workflows
-          sparse-checkout: .github/actions
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
+          token: ${{ steps.token.outputs.token }}
 
       - name: Detect project type
         id: detect-project
@@ -217,41 +181,6 @@ jobs:
             echo "has_docs=${HAS_DOCS}"
           } >> "${GITHUB_OUTPUT}"
 
-      # Both versioning paths record the release in CITATION.cff, and the bump
-      # rewrites lines of one exact shape. A missing or differently written
-      # line is named here, rather than as a pattern the bump did not match.
-      - name: Check the version lines
-        id: citation
-        env:
-          REPO_TYPE: ${{ steps.detect-project.outputs.repo_type }}
-          EXTENSION: ${{ steps.detect-project.outputs.extension_name }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -f "CITATION.cff" ]; then
-            echo "::error::No CITATION.cff found: the release records its version and date there."
-            exit 1
-          fi
-
-          VERSION_LINE='^version: [0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
-          STATUS=0
-          if ! grep -Eq "${VERSION_LINE}" CITATION.cff; then
-            echo "::error file=CITATION.cff::CITATION.cff needs a line 'version: X.Y.Z', without quotes. A project can start from any date, such as 'version: 2026.01.01'."
-            STATUS=1
-          fi
-          if ! grep -Eq '^date-released: "[0-9]{4}-[0-9]{2}-[0-9]{2}"$' CITATION.cff; then
-            echo "::error file=CITATION.cff::CITATION.cff needs a line 'date-released: \"YYYY-MM-DD\"', with the date in double quotes."
-            STATUS=1
-          fi
-          if [ "${REPO_TYPE}" = "extension" ]; then
-            MANIFEST="_extensions/${EXTENSION}/_extension.yml"
-            if ! grep -Eq "${VERSION_LINE}" "${MANIFEST}"; then
-              echo "::error file=${MANIFEST}::${MANIFEST} needs a line 'version: X.Y.Z', without quotes."
-              STATUS=1
-            fi
-          fi
-          exit "${STATUS}"
-
       # An extension reads its version from the manifest it owns and bumps it
       # by the requested part; a project uses the date. Pins in the files a
       # user copies from are rewritten wherever they exist.
@@ -317,7 +246,7 @@ jobs:
         uses: mcanouil/release-actions/bump@v1
         with:
           bump: ${{ steps.targets.outputs.bump }}
-          token: ${{ steps.setup-git-user.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
           targets: ${{ steps.targets.outputs.targets }}
           changelog: ${{ steps.changelog.outputs.path }}
 
@@ -333,11 +262,18 @@ jobs:
         run: |
           set -euo pipefail
           REPO="${GITHUB_REPOSITORY}"
+          PINNED=()
           for file in ${INSTALL_FILES}; do
             if [ -f "${file}" ]; then
+              PINNED+=("${file}")
               sed -i -E "/quarto (add|use template)/{s|([^/])${REPO}([^@/])|\1${REPO}@${VERSION}\2|g; s|([^/])${REPO}\$|\1${REPO}@${VERSION}|g; s|^${REPO}([^@/])|${REPO}@${VERSION}\1|g; s|^${REPO}\$|${REPO}@${VERSION}|g}" "${file}"
             fi
           done
+          {
+            echo "files<<INSTALL_FILES_DELIM"
+            printf '%s\n' "${PINNED[@]}"
+            echo "INSTALL_FILES_DELIM"
+          } >> "${GITHUB_OUTPUT}"
 
       # The release job runs on another runner, so the changelog section
       # travels as an artifact. It is empty when the release has no section.
@@ -359,119 +295,46 @@ jobs:
           retention-days: 1
           overwrite: true
 
-      - name: Open and merge the version bump pull request
-        id: bump-version
+      # The install files are listed whole: the bump only rewrote the pins it
+      # found, and the step above added the ones that were missing. Every job
+      # after this one renders the merged commit and tags it, so land waits for
+      # the merge: a tag cut while auto-merge still waited on the required
+      # checks would point at the previous version's manifest.
+      - name: Land the version bump
+        id: land
+        uses: mcanouil/release-actions/land@v1
+        with:
+          mode: pull-request
+          version: ${{ steps.bump.outputs.version }}
+          files: |
+            ${{ steps.bump.outputs.files }}
+            ${{ steps.pins.outputs.files }}
+          # Auto-merge waits for whatever checks the default branch requires,
+          # so a repository whose suite outlasts the default raises this rather
+          # than forking the workflow.
+          merge-timeout: ${{ inputs.merge-timeout }}
+          token: ${{ steps.token.outputs.token }}
+
+      # A project titles its release with the date, and the release action
+      # adds the count of a second release on the same day.
+      - name: Compose the release title and summary
+        id: title
         env:
-          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
           REPO_TYPE: ${{ steps.detect-project.outputs.repo_type }}
           EXTENSION: ${{ steps.detect-project.outputs.extension_name }}
           VERSION: ${{ steps.bump.outputs.version }}
           PREVIOUS: ${{ steps.bump.outputs.previous }}
           DATE: ${{ steps.bump.outputs.date }}
-          FILES: ${{ steps.bump.outputs.files }}
         shell: bash
         run: |
-          # A run that died between creating the pull request and merging it
-          # leaves both the branch and an open pull request behind. The branch is
-          # force-pushed below, but an open pull request would make `gh pr create`
-          # fail, so it is closed first. The branch only ever exists on the
-          # remote: this job works from a fresh clone.
-          if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
-            echo "Remote branch ${BRANCH} already exists; it will be force-pushed."
-            STALE_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
-            if [ -n "${STALE_PR}" ]; then
-              echo "Closing the stale pull request #${STALE_PR}."
-              gh pr close "${STALE_PR}"
-            fi
-          fi
-          git checkout -B "${BRANCH}"
-
-          printf '%s\n' "${FILES}" | git add --pathspec-from-file=-
-          if [ "${REPO_TYPE}" = "extension" ]; then
-            for file in ${INSTALL_FILES}; do
-              if [ -f "${file}" ]; then
-                git add "${file}"
-              fi
-            done
-          fi
-
-          git commit -m "${COMMIT}" || echo "No changes to commit"
-          git push --force origin "${BRANCH}" || echo "No changes to push"
-
-          sleep 5
-          # gh prints the pull request URL as the last line of its output.
-          PR_URL=$(gh pr create --fill-first --base "${GITHUB_REF_NAME}" --head "${BRANCH}" --label "Type: CI/CD :robot:" | tail -n 1)
-          echo "Pull request: ${PR_URL}"
-          sleep 5
-          gh pr merge "${PR_URL}" --auto --squash --delete-branch
-
-          # Every job after this one renders the default branch and tags it, so
-          # the bump has to have landed there first. A tag cut while auto-merge
-          # was still waiting on the branch's required checks would point at the
-          # previous version's manifest, and `quarto add repo@<version>` would
-          # then install the wrong thing.
-          MERGE_SHA=""
-          DEADLINE=$(( SECONDS + MERGE_TIMEOUT ))
-          # Long enough that GitHub has created any check run it was going to.
-          BLOCKED_AFTER=$(( SECONDS + 120 ))
-          # Every field comes from one response: read separately they would
-          # answer about different instants. Joined on a character none of them
-          # can contain, since bash collapses runs of a whitespace separator and
-          # would shift an empty field into its neighbour.
-          POLL='[.state, (.mergeCommit.oid // ""), (.mergeStateStatus // ""), (.reviewDecision // ""), (.statusCheckRollup | length)] | map(tostring) | join("|")'
-          while [ "${SECONDS}" -lt "${DEADLINE}" ]; do
-            INFO=$(gh pr view "${PR_URL}" \
-              --json state,mergeCommit,mergeStateStatus,reviewDecision,statusCheckRollup \
-              --jq "${POLL}") || INFO=""
-            IFS='|' read -r STATE MERGE_SHA MERGE_STATE REVIEW CHECKS <<< "${INFO}"
-
-            case "${STATE}" in
-              MERGED)
-                # The merge commit is not always attached the moment the state
-                # flips, so an empty one polls again rather than carrying the
-                # literal "null" forward.
-                if [ -n "${MERGE_SHA}" ]; then
-                  echo "Merged as ${MERGE_SHA}."
-                  break
-                fi
-                ;;
-              CLOSED)
-                echo "::error::${PR_URL} was closed without merging."
-                exit 1
-                ;;
-            esac
-
-            # A push made with the default GITHUB_TOKEN triggers no workflow, so
-            # where the branch requires status checks none are ever created and
-            # auto-merge waits for something that cannot arrive. Waiting out the
-            # timeout to say so costs the whole budget in billed runner time, so
-            # the pull request being blocked with no check of any kind against it
-            # is taken as the answer. A branch that also wants a review is left
-            # to the timeout: that block is a person, not a configuration.
-            if [ "${SECONDS}" -ge "${BLOCKED_AFTER}" ] &&
-              [ "${MERGE_STATE}" = "BLOCKED" ] &&
-              [ "${CHECKS}" = "0" ] &&
-              [ "${REVIEW}" != "REVIEW_REQUIRED" ]; then
-              echo "::error::${PR_URL} is blocked and nothing has reported a check against it. The default branch requires status checks and the push that opened the pull request triggered none: configure a GitHub App, or supply a GH_TOKEN personal access token."
-              exit 1
-            fi
-
-            sleep 10
-          done
-
-          if [ -z "${MERGE_SHA}" ]; then
-            echo "::error::${PR_URL} did not merge within ${MERGE_TIMEOUT}s. Raise the merge-timeout input if the branch's required checks simply take longer than that."
-            exit 1
-          fi
-
+          set -euo pipefail
           if [ "${REPO_TYPE}" = "extension" ]; then
             RELEASE_TITLE=${EXTENSION^^}
             RELEASE_TITLE="${RELEASE_TITLE//-/ } ${VERSION}"
           else
-            RELEASE_TITLE="${DATE}"
+            RELEASE_TITLE="{date}{count}"
           fi
 
-          # Build version bump summary
           SUMMARY="## Version Bump\n\n"
           SUMMARY+="| Field | Value |\n"
           SUMMARY+="|-------|--------|\n"
@@ -488,7 +351,6 @@ jobs:
           {
             echo "release_title=${RELEASE_TITLE}"
             echo "summary=${SUMMARY}"
-            echo "merge_sha=${MERGE_SHA}"
           } >> "${GITHUB_OUTPUT}"
 
   deploy:
@@ -900,9 +762,7 @@ jobs:
     timeout-minutes: 15
     continue-on-error: true
 
-    needs:
-      - bump-version
-      - deploy
+    needs: deploy
 
     if: ${{ needs.deploy.outputs.has_thumbnail == 'true' }}
 
@@ -910,52 +770,23 @@ jobs:
       contents: write
       pull-requests: write
 
-    env:
-      BRANCH: ci/update-thumbs
-      COMMIT: "ci: update thumbs :art:"
-
     steps:
-      # As in bump-version: the workflow's own actions, read from the commit the
-      # caller pinned, and cleared by the repository checkout below.
-      - name: Checkout the workflow source
-        uses: actions/checkout@v7
+      - name: Get the token
+        uses: mcanouil/release-actions/token@v1
+        id: token
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .quarto-workflows
-          sparse-checkout: .github/actions
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
-      - name: Setup Git User
-        uses: ./.quarto-workflows/.github/actions/setup-git-user
-        id: setup-git-user
-        with:
-          gh-app-id: ${{ env.APP_ID }}
+          app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
-          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
 
-      # The commit the release was cut from, as in the deploy and release jobs,
-      # so the thumbnail branch forks from the released tree rather than from
-      # whatever the default branch points at by now.
+      # The tip of the branch rather than the released commit: land opens the
+      # pull request from a branch, and the thumbnail merges into whatever the
+      # branch holds by now, the version bump included.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          token: ${{ steps.setup-git-user.outputs.token }}
-          ref: ${{ needs.bump-version.outputs.merge_sha }}
-
-      # As in bump-version: the runner resolves an action's post step from disk
-      # when the job ends, so the source the checkout above cleared has to be
-      # back by then or the job fails after all its work is done.
-      - name: Restore the workflow source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .quarto-workflows
-          sparse-checkout: .github/actions
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
+          token: ${{ steps.token.outputs.token }}
+          ref: ${{ github.ref_name }}
 
       - name: Download the template thumbnail
         uses: actions/download-artifact@v8
@@ -963,51 +794,19 @@ jobs:
           name: template-thumbnail
           path: .github
 
+      # Not waited on: nothing after this job needs the merge. A thumbnail
+      # identical to the committed one lands nothing.
       - name: Open the thumbnail pull request
-        env:
-          GH_TOKEN: ${{ steps.setup-git-user.outputs.token }}
-        shell: bash
-        run: |
-          # As for the bump branch: the branch only ever exists on the remote,
-          # and a pull request left open by an earlier run would make
-          # `gh pr create` below fail.
-          if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
-            echo "Remote branch ${BRANCH} already exists; it will be force-pushed."
-            STALE_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
-            if [ -n "${STALE_PR}" ]; then
-              echo "Closing the stale pull request #${STALE_PR}."
-              gh pr close "${STALE_PR}"
-            fi
-          fi
-          git checkout -B "${BRANCH}"
-          git add .github/template.png || echo "No changes to add"
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-            exit 0
-          fi
-
-          git commit -m "${COMMIT}"
-          git push --force origin "${BRANCH}"
-          # Spelled out rather than filled from the branch's first commit:
-          # `--fill-first` reads `origin/<base>...<head>`, and this job checks
-          # out the merge commit by SHA, which leaves no remote-tracking ref for
-          # the base to resolve against. The title is the commit message either
-          # way.
-          PR_URL=$(gh pr create \
-            --title "${COMMIT}" \
-            --body "Regenerated \`.github/template.png\` from the rendered slides." \
-            --base "${GITHUB_REF_NAME}" \
-            --head "${BRANCH}" \
-            --label "Type: CI/CD :robot:" | tail -n 1)
-          echo "Pull request: ${PR_URL}"
-          sleep 5
-          # Named rather than inferred from the checked-out branch, as the bump
-          # job does. `--repo` keeps gh away from the local checkout: when the
-          # pull request merges at once, `--delete-branch` would otherwise
-          # switch to a local copy of the base, built from `origin/<base>`,
-          # which a checkout by SHA never fetched. The remote branch is still
-          # deleted.
-          gh pr merge "${PR_URL}" --repo "${GITHUB_REPOSITORY}" --auto --squash --delete-branch
+        uses: mcanouil/release-actions/land@v1
+        with:
+          mode: pull-request
+          files: .github/template.png
+          message: "ci: update thumbs :art:"
+          branch: ci/update-thumbs
+          body: Regenerated `.github/template.png` from the rendered slides.
+          wait: false
+          allow-unchanged: true
+          token: ${{ steps.token.outputs.token }}
 
   # A repository without docs/ publishes its rendered example or template to
   # Pages, as it always has. The deployment sits in its own job so the
@@ -1062,46 +861,31 @@ jobs:
       contents: write
 
     steps:
-      # As in bump-version, cleared in the same way by the checkout below, and
-      # restored after it for the same reason. The assets hold the install
-      # header of the release body.
-      - name: Checkout the workflow source
-        uses: actions/checkout@v7
+      - name: Get the token
+        uses: mcanouil/release-actions/token@v1
+        id: token
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .quarto-workflows
-          sparse-checkout: |
-            .github/actions
-            .github/workflows/assets
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
-      - name: Setup Git User
-        uses: ./.quarto-workflows/.github/actions/setup-git-user
-        id: setup-git-user
-        with:
-          gh-app-id: ${{ env.APP_ID }}
+          app-id: ${{ env.APP_ID }}
           app-key: ${{ secrets.APP_KEY }}
-          gh-token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
 
       # The same commit the deploy job rendered, and what the tag below points
       # at, so the render, the tag, and the release all describe one commit.
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          token: ${{ steps.setup-git-user.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
           ref: ${{ needs.bump-version.outputs.merge_sha }}
 
-      - name: Restore the workflow source
+      # The install header of the release body, read from the commit the caller
+      # pinned. After the checkout above, which would clear it.
+      - name: Checkout the workflow assets
         uses: actions/checkout@v7
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
           path: .quarto-workflows
-          sparse-checkout: |
-            .github/actions
-            .github/workflows/assets
+          sparse-checkout: .github/workflows/assets
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -1148,7 +932,7 @@ jobs:
           target: ${{ needs.bump-version.outputs.merge_sha }}
           generate-notes: true
           header: ${{ needs.bump-version.outputs.repo_type == 'extension' && '.quarto-workflows/.github/workflows/assets/release-header-extension.md' || '' }}
-          token: ${{ steps.setup-git-user.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       - name: Create the release
         uses: mcanouil/release-actions/release@v1
@@ -1156,9 +940,10 @@ jobs:
           version: ${{ needs.bump-version.outputs.version }}
           body-file: ${{ steps.notes.outputs.body-file }}
           title: ${{ needs.bump-version.outputs.release_title }}
+          date: ${{ needs.bump-version.outputs.date }}
           target: ${{ needs.bump-version.outputs.merge_sha }}
           assets: ${{ steps.assets.outputs.assets }}
-          token: ${{ steps.setup-git-user.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       # The bump has merged by now, so a new run would bump again rather than
       # release this version.

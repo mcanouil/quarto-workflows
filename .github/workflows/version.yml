@@ -44,30 +44,30 @@ jobs:
           echo "::error::Releases are cut from ${DEFAULT_BRANCH}, not ${REF_NAME}."
           exit 1
 
+      # The App only, with no fallback token: the default token cannot pass the
+      # pull request rule of the default branch, so a missing App stops the run
+      # in the next step, before anything is written.
+      - name: Get the token
+        uses: mcanouil/release-actions/token@v1
+        id: token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          app-key: ${{ secrets.APP_KEY }}
+
+      - name: Refuse to release without the App
+        if: ${{ steps.token.outputs.source != 'app' }}
+        shell: bash
+        run: |
+          echo "::error::The release pushes to the default branch as the GitHub App. Set the APP_ID variable and the APP_KEY secret, then dispatch this workflow again."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           # The whole history and every tag, since the version to cut is derived
           # from the latest one.
           fetch-depth: 0
-
-      # The App only, with no fallback token: the default token cannot pass the
-      # pull request rule of the default branch, so a missing App fails here,
-      # before anything is written.
-      - name: Setup Git User
-        uses: ./.github/actions/setup-git-user
-        id: setup-git-user
-        with:
-          gh-app-id: ${{ vars.APP_ID }}
-          app-key: ${{ secrets.APP_KEY }}
-
-      # The same commit again, so the push below goes out as the App. The
-      # action above stays on disk for its post step.
-      - name: Checkout repository as the App
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          token: ${{ steps.setup-git-user.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       - name: Bump the version
         id: bump
@@ -76,7 +76,7 @@ jobs:
           bump: ${{ inputs.version }}
           version-source: tag
           tag-prefix: v
-          token: ${{ steps.setup-git-user.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       # The README tells callers which major to pin, and a @v{major} target
       # would also rewrite pins such as actions/checkout@v7. A major cut
@@ -105,22 +105,16 @@ jobs:
           echo "README.md pins ${MAJOR}."
 
       # The App is exempt from the pull request rule of the default branch, and
-      # [skip ci] keeps CI from running again on a tree it has checked.
+      # the [skip ci] of the release message keeps CI from running again on a
+      # tree it has checked.
       - name: Push the version
         id: push
-        env:
-          VERSION: ${{ steps.bump.outputs.version }}
-          FILES: ${{ steps.bump.outputs.files }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf '%s\n' "${FILES}" | git add --pathspec-from-file=-
-          git commit -m "ci: release v${VERSION} [skip ci]"
-          if ! git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"; then
-            echo "::error::The App could not push the bump to ${GITHUB_REF_NAME}. If the push output says the branch moved, dispatch this workflow again; otherwise add the App to the bypass list of the branch ruleset first."
-            exit 1
-          fi
-          echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+        uses: mcanouil/release-actions/land@v1
+        with:
+          mode: push
+          files: ${{ steps.bump.outputs.files }}
+          version: ${{ steps.bump.outputs.version }}
+          tag-prefix: v
 
       - name: Compose the release body
         id: notes
@@ -131,7 +125,7 @@ jobs:
           tag: v${{ steps.bump.outputs.version }}
           target: ${{ steps.push.outputs.sha }}
           generate-notes: true
-          token: ${{ steps.setup-git-user.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       # The tags are lightweight, deliberately, and not to be turned into
       # annotated tags. `release.yml` calls the Pages workflow through a relative
@@ -150,7 +144,7 @@ jobs:
           target: ${{ steps.push.outputs.sha }}
           latest: true
           rolling: true
-          token: ${{ steps.setup-git-user.outputs.token }}
+          token: ${{ steps.token.outputs.token }}
 
       # A new dispatch would stop on the emptied Unreleased section, and then on
       # the existing changelog heading, so the pushed bump has to go first.
