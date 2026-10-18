@@ -307,8 +307,8 @@ jobs:
 
 ## Actions
 
-The workflows above check these actions out from their own commit and run them from the workspace, so a caller that pinned a workflow to a release gets the actions that shipped with it.
-Neither action is meant to be called directly.
+The workflows above check this action out from their own commit and run it from the workspace, so a caller that pinned a workflow to a release gets the action that shipped with it.
+It is not meant to be called directly.
 
 ### [`setup-quarto-compute`](.github/actions/setup-quarto-compute/action.yml)
 
