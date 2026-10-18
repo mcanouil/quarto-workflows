@@ -307,8 +307,8 @@ jobs:
 
 ## Actions
 
-The workflows above check these actions out from their own commit and run them from the workspace, so a caller that pinned a workflow to a release gets the actions that shipped with it.
-Neither action is meant to be called directly.
+The workflows above check this action out from their own commit and run it from the workspace, so a caller that pinned a workflow to a release gets the action that shipped with it.
+It is not meant to be called directly.
 
 ### [`setup-quarto-compute`](.github/actions/setup-quarto-compute/action.yml)
 
@@ -361,36 +361,3 @@ The detected formats and engines are written to the job summary by the action it
 [`test-setup-quarto-compute.yml`](.github/workflows/test-setup-quarto-compute.yml) runs the action against the fixtures under [`tests/`](tests), one per install path: `knitr` with a `renv.lock`, `jupyter` with and without a `pyproject.toml`, `julia`, a PDF format, and a Reveal.js deck converted with DeckTape as the release workflow does.
 Each fixture asserts what detection reported, checks that the toolchain it installed is usable, and renders.
 It runs on pull requests touching the action, its fixtures, or the slides script, on dispatch, and monthly, and skips a pull request that is still a draft.
-
-### [`setup-git-user`](.github/actions/setup-git-user/action.yml)
-
-A composite action that resolves the token the calling job commits, pushes, and calls `gh` with, and configures the matching git identity.
-The workflows of this repository now use the [`token`](https://github.com/mcanouil/release-actions#token) action of `release-actions` instead.
-This action stays for the repositories that call it, until the next major release removes it.
-
-A GitHub App is used only when both `gh-app-id` and `app-key` are supplied, since [`actions/create-github-app-token`](https://github.com/actions/create-github-app-token) requires the private key.
-An id supplied without a key emits a warning and falls back, so a repository holding the `APP_ID` variable without the matching secret still runs.
-The action fails when it is given no credentials at all, rather than leaving every later `gh` call to fail on its own.
-
-Because a GitHub App token lasts an hour, a job that pushes long after it started would find its token expired.
-The release workflow keeps every push in a job that resolves a token and then uses it: the template thumbnail is pushed by a job of its own rather than by the render that produced it, which can spend most of that hour installing runtimes.
-
-#### Inputs
-
-| Input       | Default | Description                                                   |
-| ----------- | ------- | ------------------------------------------------------------- |
-| `gh-app-id` | `""`    | GitHub App client ID. A private key is required alongside it. |
-| `app-key`   | `""`    | GitHub App private key.                                       |
-| `gh-token`  | `""`    | Token used when no GitHub App is available.                   |
-
-#### Outputs
-
-| Output  | Description                                                            |
-| ------- | ---------------------------------------------------------------------- |
-| `token` | The GitHub App installation token, or `gh-token` when there is no App. |
-
-#### Tests
-
-[`test-setup-git-user.yml`](.github/workflows/test-setup-git-user.yml) runs the action once per credential path: no App, an App id without a key, a full App when the repository has one configured, and no credentials at all.
-Each asserts the identity written to the git configuration and that a token was resolved, through the shared [`assert-git-identity.sh`](.github/workflows/assets/assert-git-identity.sh), and the last asserts that the action refused to run.
-It runs on pull requests touching the action or that script, on dispatch, and monthly, and skips a pull request that is still a draft.
