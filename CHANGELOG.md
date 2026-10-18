@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- refactor: Remove the `setup-git-user` action, which no caller uses now that every workflow takes its token from `release-actions` `token`.
+
 ## 2.5.0 (2026-10-17)
 
 - feat: Add the `tag` and `sha` outputs to the release workflow, so a later job of the caller can work on the release. (#51)
