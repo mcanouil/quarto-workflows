@@ -4,7 +4,8 @@
 
 name: Pages
 
-# Publishes the documentation website under docs/, which is what a repository
+# Publishes the documentation website under docs/, or the Quarto project a
+# caller names with `path`. The site under docs/ is what a repository
 # serves from GitHub Pages once it has one: it takes the slot the rendered
 # example.qmd or template.qmd used to fill. The Release workflow calls this
 # after tagging, and it is dispatchable on its own. Pull requests render the
@@ -28,6 +29,11 @@ on:
         type: string
         required: false
         default: "release"
+      path:
+        description: "Quarto project directory to render and deploy, relative to the repository root."
+        type: string
+        required: false
+        default: "docs"
   workflow_dispatch:
     inputs:
       use-main-as-release:
@@ -70,10 +76,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          # The whole history, so the latest version tag can be resolved below.
-          # A pull request renders its own head and skips that resolution, so it
-          # takes the shallow clone instead.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 1 || 0 }}
+          # The whole history only when the latest version tag is resolved below.
+          # Every other run renders the ref it was given, so it takes the shallow
+          # clone: a site whose history is large would otherwise pay for all of
+          # it on every deploy.
+          fetch-depth: ${{ (inputs.ref == '' && !inputs.use-main-as-release && github.event_name != 'pull_request') && 0 || 1 }}
           ref: ${{ inputs.ref }}
 
       # A pull request renders its own head, so a broken page is caught before
@@ -118,15 +125,19 @@ jobs:
       # contributed by the repository's own extension is therefore only found
       # when a real copy is already on disk, so the mirror is refreshed here
       # rather than left to whatever was last committed.
-      - name: Sync the repository's extension into docs/
+      - name: Sync the repository's extension into the site
         shell: bash
+        env:
+          SITE_PATH: ${{ inputs.path || 'docs' }}
         run: |
-          if [ -x "docs/_scripts/sync-extension.sh" ]; then
-            ./docs/_scripts/sync-extension.sh
-          elif [ -f "docs/_scripts/sync-extension.sh" ]; then
-            bash docs/_scripts/sync-extension.sh
+          SITE_PATH="${SITE_PATH%/}"
+          SYNC_SCRIPT="./${SITE_PATH}/_scripts/sync-extension.sh"
+          if [ -x "${SYNC_SCRIPT}" ]; then
+            "${SYNC_SCRIPT}"
+          elif [ -f "${SYNC_SCRIPT}" ]; then
+            bash "${SYNC_SCRIPT}"
           else
-            echo "No docs/_scripts/sync-extension.sh; nothing to sync."
+            echo "No ${SYNC_SCRIPT}; nothing to sync."
           fi
 
       # Documentation pages execute code, so the runtimes behind the engines the
@@ -137,17 +148,24 @@ jobs:
         id: compute
         uses: ./.quarto-workflows/.github/actions/setup-quarto-compute
         with:
-          path: docs
+          path: ${{ inputs.path || 'docs' }}
 
       - name: Render site
-        run: quarto render docs
+        id: render
+        shell: bash
+        env:
+          SITE_PATH: ${{ inputs.path || 'docs' }}
+        run: |
+          SITE_PATH="${SITE_PATH%/}"
+          quarto render "${SITE_PATH}"
+          echo "site=${SITE_PATH}/_site" >> "${GITHUB_OUTPUT}"
 
       - name: Upload site artifact
         if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v7
         with:
           name: site
-          path: docs/_site
+          path: ${{ steps.render.outputs.site }}
           retention-days: 1
 
   deploy:
