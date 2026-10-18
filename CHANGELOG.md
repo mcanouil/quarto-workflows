@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.6.0 (2026-10-18)
+
 - refactor: Remove the `setup-git-user` action, which no caller uses now that every workflow takes its token from `release-actions` `token`. (#52)
 
 ## 2.5.0 (2026-10-17)
