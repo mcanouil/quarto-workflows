@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.7.0 (2026-10-19)
+
 - feat: Add the `path` input to the Pages workflow, so a caller can render and deploy a Quarto project other than `docs/`. (#53)
 - perf: Fetch the whole history in the Pages workflow only when it resolves the latest version tag. (#53)
 
