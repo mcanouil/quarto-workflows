@@ -193,7 +193,7 @@ A project ignores it and uses date-based versioning taken from `CITATION.cff`, s
 
 ### [`pages.yml`](.github/workflows/pages.yml)
 
-A reusable workflow that renders the documentation website under `docs/` and deploys it to GitHub Pages.
+A reusable workflow that renders the documentation website under `docs/`, or the Quarto project named by `path`, and deploys it to GitHub Pages.
 The Release workflow calls it after tagging, so the published site describes the version users can install.
 It is also dispatchable on its own, and a pull request that calls it renders the site as a check without deploying.
 
@@ -204,10 +204,11 @@ A caller triggered by `pull_request` therefore has to list `ready_for_review` am
 Key features include:
 
 - **Released source by default**: The latest version tag is resolved and rendered, unless `ref` or `use-main-as-release` says otherwise. Pull requests always render their own head.
+- **Shallow clone**: The whole history is fetched only when the latest version tag is resolved; every other run takes a shallow clone.
 - **Drafts skipped**: A draft pull request skips the render, and marking it ready for review runs it.
-- **Extension mirror**: `docs/_scripts/sync-extension.sh` is run when present, so a shortcode contributed by the repository's own extension is on disk before Quarto builds its extension registry.
+- **Extension mirror**: `<path>/_scripts/sync-extension.sh` is run when present, so a shortcode contributed by the repository's own extension is on disk before Quarto builds its extension registry.
 - **Compute environment**: R, Python, Julia, TinyTeX, and Chrome libraries are installed from what [`setup-quarto-compute`](#setup-quarto-compute) detects, so pages that execute code render.
-- **Single deployment at a time**: Pages runs queue rather than cancel; pull request renders get a per-ref concurrency group and run in parallel.
+- **Single deployment at a time**: Pages runs queue rather than cancel; pull request renders get a per-ref concurrency group and run in parallel. A caller sets no `concurrency` of its own, since a group shared with this workflow would block it.
 
 #### Inputs
 
@@ -216,6 +217,7 @@ Key features include:
 | `ref`                 | `""`        | Commit or ref to build. Defaults to the latest version tag.       |
 | `use-main-as-release` | `false`     | Render from the triggering ref instead of the latest version tag. |
 | `quarto`              | `"release"` | Quarto version to install (`release` or `pre-release`).           |
+| `path`                | `"docs"`    | Quarto project directory to render and deploy; `.` is the root.   |
 
 #### Example
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- feat: Add the `path` input to the Pages workflow, so a caller can render and deploy a Quarto project other than `docs/`. (#53)
+- perf: Fetch the whole history in the Pages workflow only when it resolves the latest version tag. (#53)
+
 ## 2.6.0 (2026-10-18)
 
 - refactor: Remove the `setup-git-user` action, which no caller uses now that every workflow takes its token from `release-actions` `token`. (#52)
