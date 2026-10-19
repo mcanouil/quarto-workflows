@@ -80,7 +80,9 @@ jobs:
           # Every other run renders the ref it was given, so it takes the shallow
           # clone: a site whose history is large would otherwise pay for all of
           # it on every deploy.
-          fetch-depth: ${{ (inputs.ref == '' && !inputs.use-main-as-release && github.event_name != 'pull_request') && 0 || 1 }}
+          # The shallow case comes first because 0 is falsy in an expression, so
+          # `cond && 0 || 1` would always yield 1.
+          fetch-depth: ${{ (inputs.ref != '' || inputs.use-main-as-release || github.event_name == 'pull_request') && 1 || 0 }}
           ref: ${{ inputs.ref }}
 
       # A pull request renders its own head, so a broken page is caught before
