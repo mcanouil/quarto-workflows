@@ -67,8 +67,10 @@ Both repo types record the release version and date in `CITATION.cff`, so the fi
 It needs a line `version: X.Y.Z` and a line `date-released: "YYYY-MM-DD"`.
 The bump keeps the form of each value, with or without quotes.
 A project can start from any date, such as `version: 2026.01.01`.
-An extension also needs `version: X.Y.Z` without quotes in its `_extension.yml`.
+An extension also needs `version: X.Y.Z` in its `_extension.yml`, on a line of its own, without quotes or a comment.
 The extension must have exactly one manifest one level under `_extensions/`.
+Detection, and `repo-type: extension` too, looks for it at `_extensions/<name>/_extension.yml`, where `<name>` is the repository name without `quarto-`, or also without `revealjs-`.
+As it is the only manifest at that level, the bump writes the same file.
 The bump does not change the vendored extensions under `_extensions/<owner>/<name>/`.
 The release stops before the version bump when one of these lines is missing or written another way.
 
