@@ -62,10 +62,14 @@ flowchart TD
   release --> out(["outputs: tag, sha"])
 ```
 
+The bump writes these files with the [`ecosystems`](https://github.com/mcanouil/release-actions#ecosystems) presets of `release-actions`: `quarto-extension, citation` for an extension, and `citation` for a project.
 Both repo types record the release version and date in `CITATION.cff`, so the file is required.
-It needs a line `version: X.Y.Z` without quotes, and a line `date-released: "YYYY-MM-DD"` with the date in double quotes.
+It needs a line `version: X.Y.Z` and a line `date-released: "YYYY-MM-DD"`.
+The bump keeps the form of each value, with or without quotes.
 A project can start from any date, such as `version: 2026.01.01`.
 An extension also needs `version: X.Y.Z` without quotes in its `_extension.yml`.
+The extension must have exactly one manifest one level under `_extensions/`.
+The bump does not change the vendored extensions under `_extensions/<owner>/<name>/`.
 The release stops before the version bump when one of these lines is missing or written another way.
 
 #### Inputs
