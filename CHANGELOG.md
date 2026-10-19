@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- refactor: Write the extension manifest and CITATION.cff through the release-actions presets. (#54)
+
 ## 2.7.0 (2026-10-19)
 
 - feat: Add the `path` input to the Pages workflow, so a caller can render and deploy a Quarto project other than `docs/`. (#53)

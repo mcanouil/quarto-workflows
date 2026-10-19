@@ -193,44 +193,37 @@ jobs:
             echo "has_docs=${HAS_DOCS}"
           } >> "${GITHUB_OUTPUT}"
 
-      # An extension reads its version from the manifest it owns and bumps it
-      # by the requested part; a project uses the date. Pins in the files a
+      # An extension reads its version from its one-level manifest and bumps it
+      # by the requested part; a project reads CITATION.cff and uses the date.
+      # The presets write the manifest and CITATION.cff. Pins in the files a
       # user copies from are rewritten wherever they exist.
       - name: Build the bump targets
         id: targets
         env:
           REPO_TYPE: ${{ steps.detect-project.outputs.repo_type }}
-          EXTENSION: ${{ steps.detect-project.outputs.extension_name }}
         shell: bash
         run: |
           set -euo pipefail
 
           TARGETS_FILE="${RUNNER_TEMP}/bump-targets.yml"
-          {
-            if [ "${REPO_TYPE}" = "extension" ]; then
-              printf -- "- file: _extensions/%s/_extension.yml\n  pattern: '^version: {version}\$'\n  source: true\n" "${EXTENSION}"
-              printf -- "- file: CITATION.cff\n  pattern: '^version: {version}\$'\n"
-            else
-              printf -- "- file: CITATION.cff\n  pattern: '^version: {version}\$'\n  source: true\n"
-            fi
-            printf -- "- file: CITATION.cff\n  pattern: '^date-released: \"{date}\"\$'\n"
-            if [ "${REPO_TYPE}" = "extension" ]; then
-              for file in ${INSTALL_FILES}; do
-                printf -- "- file: %s\n  pattern: '%s@{version}'\n  required: false\n" "${file}" "${GITHUB_REPOSITORY}"
-              done
-            fi
-          } > "${TARGETS_FILE}"
-          cat "${TARGETS_FILE}"
-
+          : > "${TARGETS_FILE}"
           if [ "${REPO_TYPE}" = "extension" ]; then
+            ECOSYSTEMS="quarto-extension, citation"
             BUMP="${BUMP_VERSION}"
+            for file in ${INSTALL_FILES}; do
+              printf -- "- file: %s\n  pattern: '%s@{version}'\n  required: false\n" "${file}" "${GITHUB_REPOSITORY}" >> "${TARGETS_FILE}"
+            done
           else
+            ECOSYSTEMS="citation"
             BUMP="calver"
           fi
+          echo "Ecosystems: ${ECOSYSTEMS}"
+          cat "${TARGETS_FILE}"
 
           DELIM="TARGETS_$(openssl rand -hex 16)"
           {
             echo "bump=${BUMP}"
+            echo "ecosystems=${ECOSYSTEMS}"
             echo "targets<<${DELIM}"
             cat "${TARGETS_FILE}"
             echo "${DELIM}"
@@ -259,6 +252,7 @@ jobs:
         with:
           bump: ${{ steps.targets.outputs.bump }}
           token: ${{ steps.token.outputs.token }}
+          ecosystems: ${{ steps.targets.outputs.ecosystems }}
           targets: ${{ steps.targets.outputs.targets }}
           changelog: ${{ steps.changelog.outputs.path }}
 
