@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.8.0 (2026-10-19)
+
 - refactor: Write the extension manifest and CITATION.cff through the release-actions presets. (#54)
 
 ## 2.7.0 (2026-10-19)
