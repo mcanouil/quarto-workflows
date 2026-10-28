@@ -470,19 +470,37 @@ jobs:
 
           OUTPUT_DIRECTORY="${OUTPUT_DIR}"
 
-          # A documentation website is a Quarto project of its own, but the root
+          # A documentation website under docs/ and Quarto test fixtures under
+          # test/ or tests/ are Quarto projects of their own, but the root
           # project scan does not skip a subdirectory that has one. Left alone,
-          # every page under docs/ is rendered a second time here, without the
-          # configuration, theme, and extensions that make it work, and lands in
-          # the archive attached to the release. Exclude it, so this render is
-          # the example check it claims to be.
+          # their pages are rendered a second time here, without the
+          # configuration, theme, and extensions that make them work, and land
+          # in the archive attached to the release. Exclude them, so this render
+          # is the example check it claims to be.
+          EXCLUDES=()
           if [ "${HAS_DOCS}" = "true" ]; then
-            if [ "$(yq eval '.project.render' "${PROJECT_DIR}/_quarto.yml")" = "null" ]; then
-              yq eval -i '.project.render = ["*.qmd", "!docs/"]' "${PROJECT_DIR}/_quarto.yml"
-            elif ! yq eval '.project.render[] | select(. == "!docs/")' "${PROJECT_DIR}/_quarto.yml" | grep -q 'docs/'; then
-              yq eval -i '.project.render += ["!docs/"]' "${PROJECT_DIR}/_quarto.yml"
+            EXCLUDES+=("docs/")
+          fi
+          for dir in test tests; do
+            if [ -d "${PROJECT_DIR}/${dir}" ] && find "${PROJECT_DIR}/${dir}" -name _quarto.yml -print -quit | grep -q .; then
+              EXCLUDES+=("${dir}/")
+            fi
+          done
+          # An exclusion-only list renders nothing, so a missing list needs an
+          # include. Without docs/, the root render is the published site, so
+          # it keeps Quarto's default inputs and the fixtures are not excluded.
+          if [ "$(yq eval '.project.render' "${PROJECT_DIR}/_quarto.yml")" = "null" ]; then
+            if [ "${HAS_DOCS}" = "true" ]; then
+              yq eval -i '.project.render = ["*.qmd"]' "${PROJECT_DIR}/_quarto.yml"
+            else
+              EXCLUDES=()
             fi
           fi
+          for exclude in "${EXCLUDES[@]}"; do
+            if ! EXCLUDE="!${exclude}" yq eval -e '.project.render[] | select(. == strenv(EXCLUDE))' "${PROJECT_DIR}/_quarto.yml" >/dev/null 2>&1; then
+              EXCLUDE="!${exclude}" yq eval -i '.project.render += [strenv(EXCLUDE)]' "${PROJECT_DIR}/_quarto.yml"
+            fi
+          done
 
           echo "Quarto project type: ${QUARTO_PROJECT_TYPE}"
           echo "Output directory: ${OUTPUT_DIRECTORY}"
