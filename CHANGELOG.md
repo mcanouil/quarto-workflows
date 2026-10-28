@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.10.0 (2026-10-28)
+
 - refactor: Remove the `pin-files` input of the release workflow. A reusable workflow can check out its own commit with `job.workflow_sha` instead, which needs no rewrite under `.github/workflows/`. A caller that still passes `pin-files` must drop it, since `v2` now rejects the input. (#58)
 
 ## 2.9.0 (2026-10-28)
