@@ -470,7 +470,7 @@ jobs:
 
           OUTPUT_DIRECTORY="${OUTPUT_DIR}"
 
-          # A documentation website under docs/ and the test fixtures under
+          # A documentation website under docs/ and Quarto test fixtures under
           # test/ or tests/ are Quarto projects of their own, but the root
           # project scan does not skip a subdirectory that has one. Left alone,
           # their pages are rendered a second time here, without the
@@ -482,7 +482,7 @@ jobs:
             EXCLUDES+=("docs/")
           fi
           for dir in test tests; do
-            if [ -d "${PROJECT_DIR}/${dir}" ]; then
+            if [ -d "${PROJECT_DIR}/${dir}" ] && find "${PROJECT_DIR}/${dir}" -name _quarto.yml -print -quit | grep -q .; then
               EXCLUDES+=("${dir}/")
             fi
           done
