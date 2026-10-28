@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- fix: Skip `test/` and `tests/` in the root render check of the release workflow when they hold a Quarto project, as `docs/` already is. Those test fixtures failed to render without their own configuration.
+- fix: Skip `test/` and `tests/` in the root render check of the release workflow when they hold a Quarto project, as `docs/` already is. Those test fixtures failed to render without their own configuration. (#56)
 
 ## 2.8.0 (2026-10-19)
 
