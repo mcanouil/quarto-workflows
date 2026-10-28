@@ -44,7 +44,7 @@ on:
         default: ""
         type: string
       pin-files:
-        description: "Files in the caller, separated by spaces or new lines, whose pins of the repository follow the release, such as a workflow that uses the repository's own actions. Every <repository>[/<path>]@X.Y.Z pin in them is rewritten. Extensions only. Default: none"
+        description: "Files whose <repository>[/<path>]@X.Y.Z pins follow the release, separated by spaces or new lines. Extensions only"
         required: false
         default: ""
         type: string
@@ -203,12 +203,9 @@ jobs:
       # by the requested part; a project reads CITATION.cff and uses the date.
       # The presets write the manifest and CITATION.cff. Pins in the files a
       # user copies from are rewritten wherever they exist.
-      #
-      # A pin-files entry can pin a path under the repository, such as
-      # <repository>/.github/actions/<name>@X.Y.Z. A target pattern is literal
-      # apart from {version}, so each distinct pinned path found in the file
-      # gets a target of its own. A pin in an install file that pin-files also
-      # lists is already a target, and bump refuses one listed twice.
+      # Each distinct path pinned in a pin-files entry, such as
+      # <repository>/.github/actions/<name>, gets a target of its own, since a
+      # target pattern is literal apart from {version}.
       - name: Build the bump targets
         id: targets
         env:
@@ -225,8 +222,9 @@ jobs:
             for file in ${INSTALL_FILES}; do
               printf -- "- file: %s\n  pattern: '%s@{version}'\n  required: false\n" "${file}" "${GITHUB_REPOSITORY}" >> "${TARGETS_FILE}"
             done
+            # The version part is the {version} form of release-actions bump.
             PIN_REGEX="${GITHUB_REPOSITORY//./\\.}(/[^@[:space:]\"']+)?@[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?"
-            for file in ${PIN_FILES}; do
+            for file in $(tr -s '[:space:]' '\n' <<< "${PIN_FILES}" | LC_ALL=C sort -u); do
               if [ ! -f "${file}" ]; then
                 echo "::error::pin-files lists '${file}', which is not a file in the repository."
                 exit 1
@@ -292,9 +290,7 @@ jobs:
 
       # The bump only replaces pins that exist. A new extension's install lines
       # have none yet, so the version is added after the repository name on
-      # every `quarto add` or `quarto use template` line that lacks one. The
-      # pin-files are left out: a `uses:` reference always names a ref, so no
-      # pin there is missing, and bump already lists the ones it rewrote.
+      # every `quarto add` or `quarto use template` line that lacks one.
       - name: Pin unpinned install lines
         id: pins
         if: ${{ steps.detect-project.outputs.repo_type == 'extension' }}
