@@ -85,7 +85,6 @@ The release stops before the version bump when one of these lines is missing or 
 | `gh-app-id`     |             | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable.    |
 | `merge-timeout` | `1800`      | Seconds to wait for the version bump pull request to merge.                                     |
 | `notes-header`  | `""`        | Template file in the caller, put first in the release body. Default: the install header for an extension, none for a project. |
-| `pin-files`     | `""`        | Files in the caller whose pins of the repository follow the release, separated by spaces or new lines. Extensions only. |
 
 #### Outputs
 
@@ -113,11 +112,6 @@ A later job of the caller can use them, for example to attach more files to the 
 ```
 
 The `notes-header` template can contain `{version}`, `{tag}`, `{date}` and `{repository}`.
-
-The `pin-files` input is for references the install files don't cover, such as a workflow that uses the repository's own actions.
-The bump rewrites every `<repository>@X.Y.Z` and `<repository>/<path>@X.Y.Z` pin in those files to the released version, and lands them with the rest of the bump.
-Each file must exist and hold at least one such pin, or the release stops before the bump.
-GitHub refuses a push that changes a file under `.github/workflows/` unless the token can write workflows, so a GitHub App needs the Workflows permission, and a personal access token needs the `workflow` scope.
 
 #### Authentication
 
