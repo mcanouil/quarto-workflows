@@ -230,7 +230,7 @@ jobs:
                 echo "::error::pin-files lists '${file}', which is not a file in the repository."
                 exit 1
               fi
-              PINNED="$(grep -oE "${PIN_REGEX}" "${file}" | sed 's/@[^@]*$//' | LC_ALL=C sort -u || true)"
+              PINNED="$(grep -oE -- "${PIN_REGEX}" "${file}" | sed 's/@[^@]*$//' | LC_ALL=C sort -u || true)"
               if [ -z "${PINNED}" ]; then
                 echo "::error::pin-files lists '${file}', which has no pin such as ${GITHUB_REPOSITORY}/.github/actions/<name>@X.Y.Z. Remove it from pin-files, or pin the reference to a release."
                 exit 1
@@ -239,7 +239,7 @@ jobs:
                 if [ "${pinned}" = "${GITHUB_REPOSITORY}" ] && [[ " ${INSTALL_FILES} " == *" ${file} "* ]]; then
                   continue
                 fi
-                printf -- "- file: '%s'\n  pattern: '%s@{version}'\n" "${file//\'/\'\'}" "${pinned}" >> "${TARGETS_FILE}"
+                printf -- "- file: '%s'\n  pattern: '%s@{version}'\n  required: true\n" "${file//\'/\'\'}" "${pinned}" >> "${TARGETS_FILE}"
               done <<< "${PINNED}"
             done
           else
