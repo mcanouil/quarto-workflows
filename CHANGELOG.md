@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- feat: Add the `pin-files` input to the release workflow. The pins of the repository in the files it lists, such as `<repository>/.github/actions/<name>@X.Y.Z`, follow each release. (#57)
+
 ## 2.8.1 (2026-10-28)
 
 - fix: Skip `test/` and `tests/` in the root render check of the release workflow when they hold a Quarto project, as `docs/` already is. Those test fixtures failed to render without their own configuration. (#56)
