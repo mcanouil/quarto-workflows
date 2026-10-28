@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix: Skip `test/` and `tests/` in the root render of the release workflow, as `docs/` already is. Test fixtures are Quarto projects of their own and failed to render without their configuration.
+
 ## 2.8.0 (2026-10-19)
 
 - refactor: Write the extension manifest and CITATION.cff through the release-actions presets. (#54)
