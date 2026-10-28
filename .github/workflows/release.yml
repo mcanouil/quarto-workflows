@@ -224,7 +224,8 @@ jobs:
             done
             # The version part is the {version} form of release-actions bump.
             PIN_REGEX="${GITHUB_REPOSITORY//./\\.}(/[^@[:space:]\"']+)?@[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?"
-            for file in $(tr -s '[:space:]' '\n' <<< "${PIN_FILES}" | LC_ALL=C sort -u); do
+            mapfile -t LISTED < <(tr -s '[:space:]' '\n' <<< "${PIN_FILES}" | sed '/^$/d' | LC_ALL=C sort -u)
+            for file in "${LISTED[@]}"; do
               if [ ! -f "${file}" ]; then
                 echo "::error::pin-files lists '${file}', which is not a file in the repository."
                 exit 1
