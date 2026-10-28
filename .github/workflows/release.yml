@@ -486,8 +486,15 @@ jobs:
               EXCLUDES+=("${dir}/")
             fi
           done
-          if [ "${#EXCLUDES[@]}" -gt 0 ] && [ "$(yq eval '.project.render' "${PROJECT_DIR}/_quarto.yml")" = "null" ]; then
-            yq eval -i '.project.render = ["*.qmd"]' "${PROJECT_DIR}/_quarto.yml"
+          # An exclusion-only list renders nothing, so a missing list needs an
+          # include. Without docs/, the root render is the published site, so
+          # it keeps Quarto's default inputs and the fixtures are not excluded.
+          if [ "$(yq eval '.project.render' "${PROJECT_DIR}/_quarto.yml")" = "null" ]; then
+            if [ "${HAS_DOCS}" = "true" ]; then
+              yq eval -i '.project.render = ["*.qmd"]' "${PROJECT_DIR}/_quarto.yml"
+            else
+              EXCLUDES=()
+            fi
           fi
           for exclude in "${EXCLUDES[@]}"; do
             if ! EXCLUDE="!${exclude}" yq eval -e '.project.render[] | select(. == strenv(EXCLUDE))' "${PROJECT_DIR}/_quarto.yml" >/dev/null 2>&1; then
