@@ -43,11 +43,6 @@ on:
         required: false
         default: ""
         type: string
-      pin-files:
-        description: "Files whose <repository>[/<path>]@X.Y.Z pins follow the release, separated by spaces or new lines. Extensions only"
-        required: false
-        default: ""
-        type: string
     outputs:
       tag:
         description: "Tag of the release"
@@ -96,7 +91,6 @@ jobs:
       # The files a user copies install lines from, whose pins the bump keeps
       # on the released version.
       INSTALL_FILES: "README.md template.qmd example.qmd"
-      PIN_FILES: ${{ inputs.pin-files }}
       BUMP_VERSION: ${{ inputs.version }}
 
     outputs:
@@ -203,9 +197,6 @@ jobs:
       # by the requested part; a project reads CITATION.cff and uses the date.
       # The presets write the manifest and CITATION.cff. Pins in the files a
       # user copies from are rewritten wherever they exist.
-      # Each distinct path pinned in a pin-files entry, such as
-      # <repository>/.github/actions/<name>, gets a target of its own, since a
-      # target pattern is literal apart from {version}.
       - name: Build the bump targets
         id: targets
         env:
@@ -222,31 +213,7 @@ jobs:
             for file in ${INSTALL_FILES}; do
               printf -- "- file: %s\n  pattern: '%s@{version}'\n  required: false\n" "${file}" "${GITHUB_REPOSITORY}" >> "${TARGETS_FILE}"
             done
-            # The version part is the {version} form of release-actions bump.
-            PIN_REGEX="${GITHUB_REPOSITORY//./\\.}(/[^@[:space:]\"']+)?@[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?"
-            mapfile -t LISTED < <(tr -s '[:space:]' '\n' <<< "${PIN_FILES}" | sed '/^$/d' | LC_ALL=C sort -u)
-            for file in "${LISTED[@]}"; do
-              if [ ! -f "${file}" ]; then
-                echo "::error::pin-files lists '${file}', which is not a file in the repository."
-                exit 1
-              fi
-              PINNED="$(grep -oE -- "${PIN_REGEX}" "${file}" | sed 's/@[^@]*$//' | LC_ALL=C sort -u || true)"
-              if [ -z "${PINNED}" ]; then
-                echo "::error::pin-files lists '${file}', which has no pin such as ${GITHUB_REPOSITORY}/.github/actions/<name>@X.Y.Z. Remove it from pin-files, or pin the reference to a release."
-                exit 1
-              fi
-              while IFS= read -r pinned; do
-                if [ "${pinned}" = "${GITHUB_REPOSITORY}" ] && [[ " ${INSTALL_FILES} " == *" ${file} "* ]]; then
-                  continue
-                fi
-                printf -- "- file: '%s'\n  pattern: '%s@{version}'\n  required: true\n" "${file//\'/\'\'}" "${pinned}" >> "${TARGETS_FILE}"
-              done <<< "${PINNED}"
-            done
           else
-            if [ -n "${PIN_FILES//[[:space:]]/}" ]; then
-              echo "::error::pin-files is set, but a ${REPO_TYPE} is versioned by date, which a pin does not follow. Remove pin-files from the caller."
-              exit 1
-            fi
             ECOSYSTEMS="citation"
             BUMP="calver"
           fi
