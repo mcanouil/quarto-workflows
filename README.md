@@ -86,11 +86,13 @@ The release stops before the version bump when one of these lines is missing or 
 | `merge-timeout` | `1800`    | Seconds to wait for the version bump pull request to merge.                                                                   |
 | `notes-header`  | `""`      | Template file in the caller, put first in the release body. Default: the install header for an extension, none for a project. |
 
-With `quarto: auto`, the default, the Quarto version follows the site's extensions.
-The workflow reads `quarto-required` from each extension directly under `_extensions/` in the site directory (`docs/` for the release workflow), and skips extensions bundled inside another extension.
+With `quarto: auto`, the default, the Quarto version follows the extensions of the project the job renders.
+The release workflow reads the root of the repository, which is the project it renders.
+It reads `quarto-required` from each extension directly under `_extensions/` there, and skips extensions bundled inside another extension.
 It installs `release` when the latest stable Quarto satisfies every range, and `pre-release` when only the latest pre-release does.
 When the answer cannot be found, it installs `release`: no extension sets a range, the version lookup fails, or no version satisfies a range (the last two log a warning).
 Set `quarto` to `release`, `pre-release`, or a version number to skip the lookup.
+The job summary shows the version chosen and the reason.
 
 #### Outputs
 
@@ -233,11 +235,13 @@ Key features include:
 | `quarto`              | `"auto"` | Quarto version to install: `auto`, `release`, `pre-release`, or a version number. |
 | `path`                | `"docs"` | Quarto project directory to render and deploy; `.` is the root.                   |
 
-With `quarto: auto`, the default, the Quarto version follows the site's extensions.
-The workflow reads `quarto-required` from each extension directly under `_extensions/` in the site directory (`docs/` for the release workflow), and skips extensions bundled inside another extension.
+With `quarto: auto`, the default, the Quarto version follows the extensions of the project the job renders.
+The pages workflow reads the folder named by `path`, which is `docs/` unless you change it.
+It reads `quarto-required` from each extension directly under `_extensions/` there, and skips extensions bundled inside another extension.
 It installs `release` when the latest stable Quarto satisfies every range, and `pre-release` when only the latest pre-release does.
 When the answer cannot be found, it installs `release`: no extension sets a range, the version lookup fails, or no version satisfies a range (the last two log a warning).
 Set `quarto` to `release`, `pre-release`, or a version number to skip the lookup.
+The job summary shows the version chosen and the reason.
 
 #### Example
 

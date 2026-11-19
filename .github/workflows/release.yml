@@ -435,15 +435,15 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      # `auto` follows the extensions of a docs/ site, which is the one the
-      # repository publishes and the one that fails to render on a Quarto older
+      # `auto` follows the extensions of the root project, which is the one
+      # this job renders and the one that fails to render on a Quarto older
       # than its extensions ask for.
       - name: Resolve the Quarto version
         id: quarto-version
         uses: ./.quarto-workflows/.github/actions/resolve-quarto-version
         with:
           quarto: ${{ env.QUARTOVERSION }}
-          path: docs
+          path: .
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
