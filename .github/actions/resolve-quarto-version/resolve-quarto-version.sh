@@ -131,6 +131,11 @@ first_failure() {
   done
 }
 
+if [ "${#RANGES[@]}" -gt 0 ] && ! check_range 0.0.0 ">=0.0.0"; then
+  fallback "the semver check could not run" \
+    "The semver check could not run (\`npx\` failed to run \`semver\`), so the ranges were not compared and release is used."
+fi
+
 for index in "${!RANGES[@]}"; do
   if check_range "${STABLE}" "${RANGES[index]}"; then
     RELEASE_CELLS[index]=yes

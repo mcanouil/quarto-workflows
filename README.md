@@ -224,6 +224,7 @@ Key features include:
 - **Shallow clone**: The whole history is fetched only when the latest version tag is resolved; every other run takes a shallow clone.
 - **Drafts skipped**: A draft pull request skips the render, and marking it ready for review runs it.
 - **Extension mirror**: `<path>/_scripts/sync-extension.sh` is run when present, so a shortcode contributed by the repository's own extension is on disk before Quarto builds its extension registry.
+  The hook runs before Quarto is installed, so it must not call `quarto`.
 - **Compute environment**: R, Python, Julia, TinyTeX, and Chrome libraries are installed from what [`setup-quarto-compute`](#setup-quarto-compute) detects, so pages that execute code render.
 - **Single deployment at a time**: Pages runs queue rather than cancel; pull request renders get a per-ref concurrency group and run in parallel. A caller sets no `concurrency` of its own, since a group shared with this workflow would block it.
 

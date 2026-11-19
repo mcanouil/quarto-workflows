@@ -141,6 +141,21 @@ check_summary "fetch failure summary" 'Latest release: could not be found\.' "${
 check_summary "fetch failure still shows the table" '^\| acme/atelier \| .>=1\.12\.1. \| not checked \| not checked \|$' "${SCRATCH}/offline.md"
 check_summary "fetch failure summary heading" '^### Quarto version$' "${SCRATCH}/offline.md"
 
+BROKEN_BIN="${SCRATCH}/broken-bin"
+mkdir -p "${BROKEN_BIN}"
+printf '#!/bin/sh\nexit 127\n' >"${BROKEN_BIN}/npx"
+chmod +x "${BROKEN_BIN}/npx"
+BROKEN=$(PATH="${BROKEN_BIN}:${PATH}" RESOLVE_SUMMARY_FILE="${SCRATCH}/broken.md" "${SCRIPT}" auto "${HERE}/needs-prerelease/docs" 2>"${SCRATCH}/broken.err")
+if [ "${BROKEN}" = "release" ]; then
+  echo "PASS broken semver check falls back to release"
+else
+  echo "FAIL broken semver check falls back to release: got ${BROKEN}"
+  FAILURES=$((FAILURES + 1))
+fi
+check_summary "broken semver check: summary names the cause" 'semver check could not run' "${SCRATCH}/broken.md"
+check_absent "broken semver check: summary does not blame the extension" 'Neither release|No single Quarto' "${SCRATCH}/broken.md"
+check_summary "broken semver check: warning names the cause" 'semver check could not run' "${SCRATCH}/broken.err"
+
 if [ "${FAILURES}" -ne 0 ]; then
   echo "${FAILURES} check(s) failed."
   exit 1
