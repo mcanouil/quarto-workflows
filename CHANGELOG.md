@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.11.0 (2026-11-19)
+
 - feat: Add `quarto: auto`, the new default, which installs the Quarto pre-release when an extension of the project a job renders needs a newer Quarto than the latest release. The release workflow reads the root project, the pages workflow reads its `path`, and the job summary explains the choice.
 - feat: Run the `_scripts/sync-extension.sh` hook of the pages workflow before Quarto is installed. A hook that calls `quarto` must move that call elsewhere.
 
