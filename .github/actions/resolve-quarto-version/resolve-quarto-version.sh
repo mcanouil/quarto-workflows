@@ -91,7 +91,7 @@ latest_version() {
 if [ -d "${SITE_PATH}/_extensions" ]; then
   while IFS= read -r manifest; do
     range=$(sed -n -E 's/^quarto-required:[[:space:]]*(.*)$/\1/p' "${manifest}" | head -n 1)
-    range=$(printf '%s' "${range}" | sed -E "s/[[:space:]]+#.*$//; s/^[\"']//; s/[\"'][[:space:]]*$//")
+    range=$(printf '%s' "${range}" | sed -E "s/[[:space:]]+#.*$//; s/^[\"']//; s/[\"'][[:space:]]*$//; s/[[:space:]]+$//")
     RANGES+=("${range}")
     label=${manifest#"${SITE_PATH}"/_extensions/}
     LABELS+=("${label%/*}")
@@ -112,7 +112,7 @@ PRERELEASE_NOTE="not looked up, because the release lookup failed"
 if [ -z "${STABLE}" ]; then
   STABLE=$(latest_version _download) || fallback "the stable version lookup failed"
 fi
-PRERELEASE_NOTE="not looked up, because the release satisfies every range"
+PRERELEASE_NOTE="not looked up, because the semver check could not run"
 
 # Succeeds when the version meets the range, and an empty range always does.
 check_range() {
@@ -135,6 +135,8 @@ if [ "${#RANGES[@]}" -gt 0 ] && ! check_range 0.0.0 ">=0.0.0"; then
   fallback "the semver check could not run" \
     "The semver check could not run (\`npx\` failed to run \`semver\`), so the ranges were not compared and release is used."
 fi
+
+PRERELEASE_NOTE="not looked up, because the release satisfies every range"
 
 for index in "${!RANGES[@]}"; do
   if check_range "${STABLE}" "${RANGES[index]}"; then

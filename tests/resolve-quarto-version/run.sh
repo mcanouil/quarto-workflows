@@ -36,6 +36,7 @@ check "range only the pre-release meets" pre-release auto "${HERE}/needs-prerele
 check "extension without an owner folder" pre-release auto "${HERE}/flat-layout/docs"
 check "one extension needs the pre-release" pre-release auto "${HERE}/mixed/docs"
 check "range written without quotes" pre-release auto "${HERE}/unquoted-range/docs"
+check "range in a CRLF manifest" pre-release auto "${HERE}/crlf-range/docs"
 check "range nothing meets" release auto "${HERE}/unsatisfiable/docs"
 check "range that does not parse" release auto "${HERE}/invalid-range/docs"
 check "bundled extension is ignored" release auto "${HERE}/nested-ignored/docs"
@@ -123,6 +124,9 @@ check_summary "conflicting ranges: row of the first extension" '^\| a/x \| .>=1\
 check_summary "conflicting ranges: row of the second extension" '^\| a/y \| .<1\.12\.0. \| yes \| no \|$' "${SCRATCH}/conflict.md"
 check_absent "conflicting ranges blame no single extension" 'Neither release' "${SCRATCH}/conflict.md"
 
+summarise crlf auto "${HERE}/crlf-range/docs"
+check_summary "CRLF manifest: range is shown without the carriage return" '^\| acme/atelier \| .1\.12\.3. \| no \| yes \|$' "${SCRATCH}/crlf.md"
+
 unset RESOLVE_SUMMARY_FILE
 check "no summary file still prints the version" pre-release auto "${HERE}/needs-prerelease/docs"
 
@@ -153,6 +157,8 @@ else
   FAILURES=$((FAILURES + 1))
 fi
 check_summary "broken semver check: summary names the cause" 'semver check could not run' "${SCRATCH}/broken.md"
+check_summary "broken semver check: pre-release note names the cause" 'not looked up, because the semver check could not run' "${SCRATCH}/broken.md"
+check_absent "broken semver check: summary does not claim release satisfies" 'release satisfies every range' "${SCRATCH}/broken.md"
 check_absent "broken semver check: summary does not blame the extension" 'Neither release|No single Quarto' "${SCRATCH}/broken.md"
 check_summary "broken semver check: warning names the cause" 'semver check could not run' "${SCRATCH}/broken.err"
 
