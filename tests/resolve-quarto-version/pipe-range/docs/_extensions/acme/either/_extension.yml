@@ -1,0 +1,2 @@
+title: Either
+quarto-required: ">=1.12.1 || ^1.11.0"

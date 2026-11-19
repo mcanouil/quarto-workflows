@@ -1,0 +1,45 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
+name: Test Resolve Quarto Version
+
+# The resolver decides which Quarto every site is built with, so each path
+# through it is checked here against fixed versions rather than whatever Quarto
+# last published.
+on:
+  pull_request:
+    # A draft pull request skips the job below, and the default activity types
+    # fire nothing when one leaves draft, so the test would then wait for a
+    # further push.
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/actions/resolve-quarto-version/**"
+      - ".github/workflows/test-resolve-quarto-version.yml"
+      - "tests/resolve-quarto-version/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: Resolve fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    if: ${{ github.event.pull_request.draft != true }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run the resolver against the fixtures
+        shell: bash
+        run: tests/resolve-quarto-version/run.sh

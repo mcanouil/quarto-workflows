@@ -77,14 +77,23 @@ The release stops before the version bump when one of these lines is missing or 
 
 #### Inputs
 
-| Input           | Default     | Description                                                                                     |
-| --------------- | ----------- | ----------------------------------------------------------------------------------------------- |
-| `version`       | `"minor"`   | Version bump type (`patch`/`minor`/`major`). Used for extensions only; ignored for projects.    |
-| `repo-type`     | `"auto"`    | Repo type (`auto`/`extension`/`project`). `auto` detects from the repo name and owned manifest. |
-| `quarto`        | `"release"` | Quarto version to install (`release` or `pre-release`).                                         |
-| `gh-app-id`     |             | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable.    |
-| `merge-timeout` | `1800`      | Seconds to wait for the version bump pull request to merge.                                     |
-| `notes-header`  | `""`        | Template file in the caller, put first in the release body. Default: the install header for an extension, none for a project. |
+| Input           | Default   | Description                                                                                                                   |
+| --------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `version`       | `"minor"` | Version bump type (`patch`/`minor`/`major`). Used for extensions only; ignored for projects.                                  |
+| `repo-type`     | `"auto"`  | Repo type (`auto`/`extension`/`project`). `auto` detects from the repo name and owned manifest.                               |
+| `quarto`        | `"auto"`  | Quarto version to install: `auto`, `release`, `pre-release`, or a version number.                                             |
+| `gh-app-id`     |           | GitHub App ID for authentication (optional). Falls back to the `APP_ID` repository variable.                                  |
+| `merge-timeout` | `1800`    | Seconds to wait for the version bump pull request to merge.                                                                   |
+| `notes-header`  | `""`      | Template file in the caller, put first in the release body. Default: the install header for an extension, none for a project. |
+
+With `quarto: auto`, the default, the Quarto version follows the extensions of the project the job renders.
+The release workflow reads the root of the repository, which is the project it renders.
+It reads `quarto-required` from each extension directly under `_extensions/` there, and skips extensions bundled inside another extension.
+It installs `release` when the latest stable Quarto satisfies every range, and `pre-release` when only the latest pre-release does.
+When the answer cannot be found, it installs `release`: no extension sets a range, the version lookup fails, or no version satisfies a range (the last two log a warning).
+Set `quarto` to `release`, `pre-release`, or a version number to skip the lookup.
+The `deploy-pages` job of the same workflow renders `docs/` through `pages.yml`, which resolves its own version from `docs/`.
+The job summary shows the version chosen and the reason.
 
 #### Outputs
 
@@ -172,8 +181,9 @@ on:
       quarto:
         type: choice
         description: "Quarto version"
-        default: "release"
+        default: "auto"
         options:
+          - "auto"
           - "release"
           - "pre-release"
 
@@ -214,17 +224,26 @@ Key features include:
 - **Shallow clone**: The whole history is fetched only when the latest version tag is resolved; every other run takes a shallow clone.
 - **Drafts skipped**: A draft pull request skips the render, and marking it ready for review runs it.
 - **Extension mirror**: `<path>/_scripts/sync-extension.sh` is run when present, so a shortcode contributed by the repository's own extension is on disk before Quarto builds its extension registry.
+  The hook runs before Quarto is installed, so it must not call `quarto`.
 - **Compute environment**: R, Python, Julia, TinyTeX, and Chrome libraries are installed from what [`setup-quarto-compute`](#setup-quarto-compute) detects, so pages that execute code render.
 - **Single deployment at a time**: Pages runs queue rather than cancel; pull request renders get a per-ref concurrency group and run in parallel. A caller sets no `concurrency` of its own, since a group shared with this workflow would block it.
 
 #### Inputs
 
-| Input                 | Default     | Description                                                       |
-| --------------------- | ----------- | ----------------------------------------------------------------- |
-| `ref`                 | `""`        | Commit or ref to build. Defaults to the latest version tag.       |
-| `use-main-as-release` | `false`     | Render from the triggering ref instead of the latest version tag. |
-| `quarto`              | `"release"` | Quarto version to install (`release` or `pre-release`).           |
-| `path`                | `"docs"`    | Quarto project directory to render and deploy; `.` is the root.   |
+| Input                 | Default  | Description                                                                       |
+| --------------------- | -------- | --------------------------------------------------------------------------------- |
+| `ref`                 | `""`     | Commit or ref to build. Defaults to the latest version tag.                       |
+| `use-main-as-release` | `false`  | Render from the triggering ref instead of the latest version tag.                 |
+| `quarto`              | `"auto"` | Quarto version to install: `auto`, `release`, `pre-release`, or a version number. |
+| `path`                | `"docs"` | Quarto project directory to render and deploy; `.` is the root.                   |
+
+With `quarto: auto`, the default, the Quarto version follows the extensions of the project the job renders.
+The pages workflow reads the folder named by `path`, which is `docs/` unless you change it.
+It reads `quarto-required` from each extension directly under `_extensions/` there, and skips extensions bundled inside another extension.
+It installs `release` when the latest stable Quarto satisfies every range, and `pre-release` when only the latest pre-release does.
+When the answer cannot be found, it installs `release`: no extension sets a range, the version lookup fails, or no version satisfies a range (the last two log a warning).
+Set `quarto` to `release`, `pre-release`, or a version number to skip the lookup.
+The job summary shows the version chosen and the reason.
 
 #### Example
 
@@ -250,8 +269,9 @@ on:
       quarto:
         type: choice
         description: "Quarto version"
-        default: "release"
+        default: "auto"
         options:
+          - "auto"
           - "release"
           - "pre-release"
 
@@ -267,7 +287,7 @@ jobs:
       id-token: write
     with:
       use-main-as-release: ${{ inputs.use-main-as-release || false }}
-      quarto: ${{ inputs.quarto || 'release' }}
+      quarto: ${{ inputs.quarto || 'auto' }}
 ```
 
 ### [`quarto-extensions-updates.yml`](.github/workflows/quarto-extensions-updates.yml)
@@ -318,6 +338,18 @@ jobs:
 
 The workflows above check this action out from their own commit and run it from the workspace, so a caller that pinned a workflow to a release gets the action that shipped with it.
 It is not meant to be called directly.
+
+### [`resolve-quarto-version`](.github/actions/resolve-quarto-version/action.yml)
+
+A composite action that turns the `quarto` input into the version the Quarto setup action installs.
+Any value but `auto` passes through.
+`auto` follows the rule described under the `quarto` input above, and reads the latest versions from `quarto.org/docs/download/_download.json` and `_prerelease.json`.
+It is not meant to be called directly.
+
+#### Tests
+
+[`tests/resolve-quarto-version/run.sh`](tests/resolve-quarto-version/run.sh) runs the script against fixture sites with fixed latest versions.
+[`test-resolve-quarto-version.yml`](.github/workflows/test-resolve-quarto-version.yml) runs it on pull requests that touch the action or its fixtures, and skips a draft.
 
 ### [`setup-quarto-compute`](.github/actions/setup-quarto-compute/action.yml)
 

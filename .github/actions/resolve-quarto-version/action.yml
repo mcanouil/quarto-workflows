@@ -1,0 +1,40 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
+name: Resolve Quarto Version
+description: Turn the quarto input into a version for the setup action, reading the extensions a site installs when it is auto.
+
+# `auto` picks `pre-release` only when the extensions under <path>/_extensions
+# ask for a Quarto that the latest stable lacks. Any other value passes through.
+
+inputs:
+  quarto:
+    description: "Quarto version: 'auto', 'release', 'pre-release', or a version number"
+    required: false
+    default: "auto"
+  path:
+    description: "Quarto project directory whose _extensions folder is read"
+    required: false
+    default: "docs"
+
+outputs:
+  version:
+    description: "Version to give to the Quarto setup action"
+    value: ${{ steps.resolve.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve the Quarto version
+      id: resolve
+      shell: bash
+      env:
+        QUARTO_INPUT: ${{ inputs.quarto }}
+        SITE_PATH: ${{ inputs.path }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        export RESOLVE_SUMMARY_FILE="${GITHUB_STEP_SUMMARY}"
+        VERSION=$("${ACTION_PATH}/resolve-quarto-version.sh" "${QUARTO_INPUT}" "${SITE_PATH}")
+        echo "Quarto version: ${VERSION}"
+        echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"

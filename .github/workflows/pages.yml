@@ -25,10 +25,10 @@ on:
         required: false
         default: false
       quarto:
-        description: "Quarto version"
+        description: "Quarto version: auto, release, pre-release, or a version number"
         type: string
         required: false
-        default: "release"
+        default: "auto"
       path:
         description: "Quarto project directory to render and deploy, relative to the repository root."
         type: string
@@ -43,8 +43,9 @@ on:
       quarto:
         type: choice
         description: "Quarto version"
-        default: "release"
+        default: "auto"
         options:
+          - "auto"
           - "release"
           - "pre-release"
 
@@ -117,11 +118,6 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      - name: Set up Quarto CLI
-        uses: quarto-dev/quarto-actions/setup@v2
-        with:
-          version: ${{ inputs.quarto || 'release' }}
-
       # Quarto builds its extension registry while reading _quarto.yml, before
       # any pre-render script runs, and it does not follow symlinks. A shortcode
       # contributed by the repository's own extension is therefore only found
@@ -141,6 +137,23 @@ jobs:
           else
             echo "No ${SYNC_SCRIPT}; nothing to sync."
           fi
+
+      # `auto` follows the extensions the site installs, so that one whose
+      # quarto-required only a pre-release meets does not fail the render. It
+      # runs after the sync above because the sync can add or refresh the
+      # repository's own extension in the site, and the choice has to see it.
+      # The sync needs no Quarto, so nothing is lost by resolving after it.
+      - name: Resolve the Quarto version
+        id: quarto-version
+        uses: ./.quarto-workflows/.github/actions/resolve-quarto-version
+        with:
+          quarto: ${{ inputs.quarto || 'auto' }}
+          path: ${{ inputs.path || 'docs' }}
+
+      - name: Set up Quarto CLI
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: ${{ steps.quarto-version.outputs.version }}
 
       # Documentation pages execute code, so the runtimes behind the engines the
       # site actually uses are installed here rather than assumed. The extension

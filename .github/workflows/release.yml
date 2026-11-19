@@ -25,9 +25,9 @@ on:
         default: "auto"
         type: string
       quarto:
-        description: "Quarto version"
+        description: "Quarto version: auto, release, pre-release, or a version number"
         required: false
-        default: "release"
+        default: "auto"
         type: string
       gh-app-id:
         description: "GitHub App ID"
@@ -435,10 +435,20 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
+      # `auto` follows the extensions of the root project, which is the one
+      # this job renders and the one that fails to render on a Quarto older
+      # than its extensions ask for.
+      - name: Resolve the Quarto version
+        id: quarto-version
+        uses: ./.quarto-workflows/.github/actions/resolve-quarto-version
+        with:
+          quarto: ${{ env.QUARTOVERSION }}
+          path: .
+
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
         with:
-          version: "${{ env.QUARTOVERSION }}"
+          version: ${{ steps.quarto-version.outputs.version }}
           tinytex: false
 
       - name: Detect project directory and configure
@@ -759,11 +769,13 @@ jobs:
       - name: Add deployment summary
         id: deployment-summary
         shell: bash
+        env:
+          RESOLVED_QUARTO: ${{ steps.quarto-version.outputs.version }}
         run: |
           SUMMARY="## Deployment\n\n"
           SUMMARY+="| Field | Value |\n"
           SUMMARY+="|-------|--------|\n"
-          SUMMARY+="| Quarto Version | \`${QUARTOVERSION}\` |\n"
+          SUMMARY+="| Quarto Version | \`${RESOLVED_QUARTO}\` |\n"
           if [ "${HAS_DOCS}" = "true" ]; then
             SUMMARY+="| GitHub Pages | Deployed from \`docs/\` by the Pages workflow. |\n"
           else
