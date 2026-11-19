@@ -92,6 +92,7 @@ It reads `quarto-required` from each extension directly under `_extensions/` the
 It installs `release` when the latest stable Quarto satisfies every range, and `pre-release` when only the latest pre-release does.
 When the answer cannot be found, it installs `release`: no extension sets a range, the version lookup fails, or no version satisfies a range (the last two log a warning).
 Set `quarto` to `release`, `pre-release`, or a version number to skip the lookup.
+The `deploy-pages` job of the same workflow renders `docs/` through `pages.yml`, which resolves its own version from `docs/`.
 The job summary shows the version chosen and the reason.
 
 #### Outputs
