@@ -34,6 +34,7 @@ runs:
         SITE_PATH: ${{ inputs.path }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
+        export RESOLVE_SUMMARY_FILE="${GITHUB_STEP_SUMMARY}"
         VERSION=$("${ACTION_PATH}/resolve-quarto-version.sh" "${QUARTO_INPUT}" "${SITE_PATH}")
         echo "Quarto version: ${VERSION}"
         echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
