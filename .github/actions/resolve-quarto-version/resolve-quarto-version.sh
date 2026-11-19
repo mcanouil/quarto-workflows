@@ -29,8 +29,7 @@ DOWNLOAD_URL=${QUARTO_DOWNLOAD_URL:-https://quarto.org/docs/download}
 
 STABLE=""
 PRERELEASE=""
-STABLE_LINE=""
-PRERELEASE_LINE=""
+PRERELEASE_NOTE=""
 RELEASE_CELLS=()
 PRERELEASE_CELLS=()
 RANGES=()
@@ -46,9 +45,9 @@ finish() {
       echo
       echo "- Input: \`${QUARTO_INPUT}\`."
       echo "- Resolved: \`${result}\`."
-      if [ -n "${STABLE_LINE}" ]; then
-        echo "- Latest release: ${STABLE_LINE}."
-        echo "- Latest pre-release: ${PRERELEASE_LINE}."
+      if [ -n "${STABLE}${PRERELEASE_NOTE}" ]; then
+        echo "- Latest release: ${STABLE:-could not be found}."
+        echo "- Latest pre-release: ${PRERELEASE:-${PRERELEASE_NOTE:-could not be found}}."
       fi
       if [ "${CONSTRAINED}" -gt 0 ]; then
         echo
@@ -89,24 +88,19 @@ latest_version() {
 # Only the manifests directly under _extensions belong to the site. Those
 # nested deeper are bundled inside an extension and carry their own constraints,
 # which Quarto does not check against the site.
-MANIFESTS=()
 if [ -d "${SITE_PATH}/_extensions" ]; then
   while IFS= read -r manifest; do
-    MANIFESTS+=("${manifest}")
+    range=$(sed -n -E 's/^quarto-required:[[:space:]]*(.*)$/\1/p' "${manifest}" | head -n 1)
+    range=$(printf '%s' "${range}" | sed -E "s/[[:space:]]+#.*$//; s/^[\"']//; s/[\"'][[:space:]]*$//")
+    RANGES+=("${range}")
+    label=${manifest#"${SITE_PATH}"/_extensions/}
+    LABELS+=("${label%/*}")
+    if [ -n "${range}" ]; then
+      CONSTRAINED=$((CONSTRAINED + 1))
+    fi
   done < <(find "${SITE_PATH}/_extensions" -mindepth 2 -maxdepth 3 -type f \
     \( -name _extension.yml -o -name _extension.yaml \) | sort)
 fi
-
-for manifest in "${MANIFESTS[@]+"${MANIFESTS[@]}"}"; do
-  range=$(sed -n -E 's/^quarto-required:[[:space:]]*(.*)$/\1/p' "${manifest}" | head -n 1)
-  range=$(printf '%s' "${range}" | sed -E "s/[[:space:]]+#.*$//; s/^[\"']//; s/[\"'][[:space:]]*$//")
-  RANGES+=("${range}")
-  label=${manifest#"${SITE_PATH}"/_extensions/}
-  LABELS+=("${label%/*}")
-  if [ -n "${range}" ]; then
-    CONSTRAINED=$((CONSTRAINED + 1))
-  fi
-done
 
 if [ "${CONSTRAINED}" -eq 0 ]; then
   echo "::notice::Quarto release: no extension under ${SITE_PATH}/_extensions sets quarto-required." >&2
@@ -114,46 +108,59 @@ if [ "${CONSTRAINED}" -eq 0 ]; then
 fi
 
 STABLE=${QUARTO_STABLE_VERSION:-}
-STABLE_LINE="could not be found"
-PRERELEASE_LINE="not looked up, because the release satisfies every range"
+PRERELEASE_NOTE="not looked up, because the release lookup failed"
 if [ -z "${STABLE}" ]; then
-  PRERELEASE_LINE="not looked up, because the release lookup failed"
   STABLE=$(latest_version _download) || fallback "the stable version lookup failed"
 fi
-STABLE_LINE=${STABLE}
+PRERELEASE_NOTE="not looked up, because the release satisfies every range"
 
-# Fills the named array with yes or no for each range, and fails when one range is not met.
-satisfies_all() {
-  local version=$1 cells=$2 index ok=0
-  FAILED=""
-  for index in "${!RANGES[@]}"; do
-    if [ -z "${RANGES[index]}" ] || npx --yes semver@7.8.6 -r "${RANGES[index]}" "${version}" >/dev/null 2>&1; then
-      eval "${cells}[index]=yes"
-    else
-      eval "${cells}[index]=no"
-      if [ -z "${FAILED}" ]; then
-        FAILED="\`${LABELS[index]}\` requires \`${RANGES[index]}\`"
-      fi
-      ok=1
-    fi
-  done
-  return "${ok}"
+# Succeeds when the version meets the range, and an empty range always does.
+check_range() {
+  [ -z "${2}" ] || npx --yes semver@7.8.6 -r "${2}" "${1}" >/dev/null 2>&1
 }
 
-if satisfies_all "${STABLE}" RELEASE_CELLS; then
+# Prints what the first range marked no in the given cells requires, or nothing.
+first_failure() {
+  local index=0 cell
+  for cell in "$@"; do
+    if [ "${cell}" = "no" ]; then
+      echo "\`${LABELS[index]}\` requires \`${RANGES[index]}\`"
+      return 0
+    fi
+    index=$((index + 1))
+  done
+}
+
+for index in "${!RANGES[@]}"; do
+  if check_range "${STABLE}" "${RANGES[index]}"; then
+    RELEASE_CELLS[index]=yes
+  else
+    RELEASE_CELLS[index]=no
+  fi
+done
+STABLE_FAILED=$(first_failure "${RELEASE_CELLS[@]}")
+
+if [ -z "${STABLE_FAILED}" ]; then
   echo "::notice::Quarto release (${STABLE}) satisfies every extension." >&2
   finish release "The latest release (${STABLE}) satisfies every \`quarto-required\` range, so release is used."
 fi
-STABLE_FAILED=${FAILED}
 
 PRERELEASE=${QUARTO_PRERELEASE_VERSION:-}
+PRERELEASE_NOTE=""
 if [ -z "${PRERELEASE}" ]; then
-  PRERELEASE_LINE="could not be found"
   PRERELEASE=$(latest_version _prerelease) || fallback "the pre-release version lookup failed"
 fi
-PRERELEASE_LINE=${PRERELEASE}
 
-if satisfies_all "${PRERELEASE}" PRERELEASE_CELLS; then
+for index in "${!RANGES[@]}"; do
+  if check_range "${PRERELEASE}" "${RANGES[index]}"; then
+    PRERELEASE_CELLS[index]=yes
+  else
+    PRERELEASE_CELLS[index]=no
+  fi
+done
+PRERELEASE_FAILED=$(first_failure "${PRERELEASE_CELLS[@]}")
+
+if [ -z "${PRERELEASE_FAILED}" ]; then
   echo "::notice::Quarto pre-release (${PRERELEASE}) chosen: ${STABLE_FAILED}, which release (${STABLE}) does not satisfy." >&2
   finish pre-release "The latest release (${STABLE}) does not satisfy every range (${STABLE_FAILED}), but the latest pre-release (${PRERELEASE}) does, so pre-release is used."
 fi
@@ -170,4 +177,4 @@ if [ -n "${BOTH_FAIL}" ]; then
     "Neither release (${STABLE}) nor pre-release (${PRERELEASE}) satisfies ${BOTH_FAIL}, so release is used. A range that cannot be read, or a semver check that cannot run, gives the same result."
 fi
 fallback "no single version satisfies every range" \
-  "No single Quarto version satisfies every range: release (${STABLE}) fails ${STABLE_FAILED}, and pre-release (${PRERELEASE}) fails ${FAILED}, so release is used."
+  "No single Quarto version satisfies every range: release (${STABLE}) fails ${STABLE_FAILED}, and pre-release (${PRERELEASE}) fails ${PRERELEASE_FAILED}, so release is used."
