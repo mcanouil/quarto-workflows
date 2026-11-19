@@ -25,10 +25,10 @@ on:
         required: false
         default: false
       quarto:
-        description: "Quarto version"
+        description: "Quarto version: auto, release, pre-release, or a version number"
         type: string
         required: false
-        default: "release"
+        default: "auto"
       path:
         description: "Quarto project directory to render and deploy, relative to the repository root."
         type: string
@@ -43,8 +43,9 @@ on:
       quarto:
         type: choice
         description: "Quarto version"
-        default: "release"
+        default: "auto"
         options:
+          - "auto"
           - "release"
           - "pre-release"
 
@@ -117,10 +118,22 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
+      # `auto` follows the extensions the site installs, so that one whose
+      # quarto-required only a pre-release meets does not fail the render. The
+      # mirror synced below only copies the repository's own extension into the
+      # site, so it is left out of the choice: the sync has to run after Quarto
+      # is installed.
+      - name: Resolve the Quarto version
+        id: quarto-version
+        uses: ./.quarto-workflows/.github/actions/resolve-quarto-version
+        with:
+          quarto: ${{ inputs.quarto || 'auto' }}
+          path: ${{ inputs.path || 'docs' }}
+
       - name: Set up Quarto CLI
         uses: quarto-dev/quarto-actions/setup@v2
         with:
-          version: ${{ inputs.quarto || 'release' }}
+          version: ${{ steps.quarto-version.outputs.version }}
 
       # Quarto builds its extension registry while reading _quarto.yml, before
       # any pre-render script runs, and it does not follow symlinks. A shortcode
