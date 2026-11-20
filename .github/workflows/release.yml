@@ -386,6 +386,7 @@ jobs:
     outputs:
       summary: ${{ steps.deployment-summary.outputs.summary }}
       has_thumbnail: ${{ steps.stage-thumbnail.outputs.has_thumbnail }}
+      pages_artifact: github-pages-${{ github.run_attempt }}
 
     steps:
       # The commit the bump merged as, rather than whatever the default branch
@@ -726,6 +727,7 @@ jobs:
         if: ${{ env.HAS_DOCS != 'true' }}
         uses: actions/upload-pages-artifact@v5
         with:
+          name: github-pages-${{ github.run_attempt }}
           path: "${{ steps.detect-project-dir.outputs.output_directory }}"
 
       - name: Upload release assets
@@ -870,6 +872,8 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: ${{ needs.deploy.outputs.pages_artifact }}
 
       - name: Add deployment summary
         env:
