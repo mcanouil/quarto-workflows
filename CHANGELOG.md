@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix: A re-run of the pages and release workflows deploys again, because each attempt names its Pages artefact after the attempt number. Before, the artefacts of failed attempts made the deploy fail. (#60)
+
 ## 2.11.0 (2026-11-19)
 
 - feat: Add `quarto: auto`, the new default, which installs the Quarto pre-release when an extension of the project a job renders needs a newer Quarto than the latest release. The release workflow reads the root project, the pages workflow reads its `path`, and the job summary explains the choice.
