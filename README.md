@@ -336,8 +336,8 @@ jobs:
 
 ## Actions
 
-The workflows above check this action out from their own commit and run it from the workspace, so a caller that pinned a workflow to a release gets the action that shipped with it.
-It is not meant to be called directly.
+The workflows above check these actions out from their own commit and run them from the workspace, so a caller that pinned a workflow to a release gets the actions that shipped with it.
+They are not meant to be called directly.
 
 ### [`resolve-quarto-version`](.github/actions/resolve-quarto-version/action.yml)
 
@@ -402,3 +402,10 @@ The detected formats and engines are written to the job summary by the action it
 [`test-setup-quarto-compute.yml`](.github/workflows/test-setup-quarto-compute.yml) runs the action against the fixtures under [`tests/`](tests), one per install path: `knitr` with a `renv.lock`, `jupyter` with and without a `pyproject.toml`, `julia`, a PDF format, and a Reveal.js deck converted with DeckTape as the release workflow does.
 Each fixture asserts what detection reported, checks that the toolchain it installed is usable, and renders.
 It runs on pull requests touching the action, its fixtures, or the slides script, on dispatch, and monthly, and skips a pull request that is still a draft.
+
+### [`wait-pages-artifact`](.github/actions/wait-pages-artifact/action.yml)
+
+A composite action that waits until the artefact list of the run shows the Pages artefact.
+`deploy-pages` looks for the artefact only one time, and the list can show a new artefact some seconds after the upload.
+The action reads the same list with the same runtime token, so the caller does not need the `actions: read` permission.
+It is not meant to be called directly.
