@@ -408,9 +408,10 @@ It runs on pull requests touching the action, its fixtures, or the slides script
 A composite action that waits until the artefact list of the run shows the Pages artefact.
 `deploy-pages` looks for the artefact only one time, and the list can show a new artefact some seconds after the upload.
 The action reads the same list with the same runtime token, so the caller does not need the `actions: read` permission.
+If the list cannot be read, the action gives a warning and lets `deploy-pages` run.
 It is not meant to be called directly.
 
 #### Tests
 
 [`tests/wait-pages-artifact/wait.test.js`](tests/wait-pages-artifact/wait.test.js) runs the script against a local stand-in for the artefact service.
-Run it with `node --test tests/wait-pages-artifact/wait.test.js`.
+[`test-wait-pages-artifact.yml`](.github/workflows/test-wait-pages-artifact.yml) runs it on pull requests that touch the action or its test, and skips a draft.
