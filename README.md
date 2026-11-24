@@ -409,3 +409,8 @@ A composite action that waits until the artefact list of the run shows the Pages
 `deploy-pages` looks for the artefact only one time, and the list can show a new artefact some seconds after the upload.
 The action reads the same list with the same runtime token, so the caller does not need the `actions: read` permission.
 It is not meant to be called directly.
+
+#### Tests
+
+[`tests/wait-pages-artifact/wait.test.js`](tests/wait-pages-artifact/wait.test.js) runs the script against a local stand-in for the artefact service.
+Run it with `node --test tests/wait-pages-artifact/wait.test.js`.
