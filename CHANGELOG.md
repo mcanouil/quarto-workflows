@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- fix: The Pages deploy now waits until its artefact shows up in the artefact list, so it no longer fails when that list lags behind the upload.
+- fix: The Pages deploy now waits until its artefact shows up in the artefact list, so it no longer fails when that list lags behind the upload. (#61)
 
 ## 2.11.1 (2026-11-20)
 
