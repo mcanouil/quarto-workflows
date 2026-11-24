@@ -1,0 +1,44 @@
+# @license MIT
+# @copyright 2026 Mickaël Canouil
+# @author Mickaël Canouil
+
+name: Test Wait Pages Artifact
+
+# The wait stands in front of every Pages deploy, so each path through it is
+# checked here against a local stand-in for the artefact service.
+on:
+  pull_request:
+    # A draft pull request skips the job below, and the default activity types
+    # fire nothing when one leaves draft, so the test would then wait for a
+    # further push.
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/actions/wait-pages-artifact/**"
+      - ".github/workflows/test-wait-pages-artifact.yml"
+      - "tests/wait-pages-artifact/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wait:
+    name: Wait script tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    if: ${{ github.event.pull_request.draft != true }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run the wait script tests
+        shell: bash
+        run: node --test tests/wait-pages-artifact/wait.test.js

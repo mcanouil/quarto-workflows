@@ -869,6 +869,21 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      - name: Checkout the workflow source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .quarto-workflows
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Wait for the Pages artefact
+        uses: ./.quarto-workflows/.github/actions/wait-pages-artifact
+        with:
+          name: ${{ needs.deploy.outputs.pages_artifact }}
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
